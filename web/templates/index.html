@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Daily Bulletin – Stay Informed, Effortlessly{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <div class="hero-text">
+    <h1>Your world. Summed up.<br/>Every morning.</h1>
+    <p class="lead">
+      The Daily Bulletin delivers a beautifully formatted, AI-curated digest of
+      the news that matters most to you — straight to your inbox before 7&nbsp;am.
+    </p>
+    <a class="btn btn-primary" href="{{ url_for('signup') }}">Get Started — It's Free</a>
+  </div>
+  <div class="hero-topics">
+    {% for topic in topics %}
+    <div class="topic-card">
+      <span class="topic-emoji">
+        {% if topic == 'news' %}📰{% elif topic == 'politics' %}🏛️{% elif topic == 'business' %}💼{% elif topic == 'marketing' %}📣{% elif topic == 'celebrity' %}⭐{% endif %}
+      </span>
+      <span>{{ topic | title }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="features">
+  <div class="feature">
+    <h3>&#128161; AI Summaries</h3>
+    <p>Every article distilled into 3 crisp bullet points by Claude AI — no fluff, just insight.</p>
+  </div>
+  <div class="feature">
+    <h3>&#128274; Premium Access</h3>
+    <p>Securely link your NYT, WSJ, and other subscriptions to unlock paywalled content.</p>
+  </div>
+  <div class="feature">
+    <h3>&#9881;&#65039; Fully Personalized</h3>
+    <p>Choose your topics and update them any time. Your bulletin, your way.</p>
+  </div>
+</section>
+{% endblock %}

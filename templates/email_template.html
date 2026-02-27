@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Your Daily Bulletin – {{ date }}</title>
+  <style>
+    /* Reset */
+    body, table, td, p, a, li, blockquote { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+    table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+    img { -ms-interpolation-mode: bicubic; border: 0; outline: none; text-decoration: none; }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #f5f5f5;
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      color: #222222;
+    }
+
+    /* Container */
+    .email-wrapper {
+      max-width: 640px;
+      margin: 0 auto;
+      background: #ffffff;
+    }
+
+    /* Header */
+    .header {
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 60%, #0f3460 100%);
+      padding: 36px 32px 28px;
+      text-align: center;
+    }
+    .header-logo {
+      font-size: 13px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: #a0aec0;
+      margin-bottom: 10px;
+    }
+    .header-title {
+      font-size: 28px;
+      font-weight: 700;
+      color: #ffffff;
+      margin: 0 0 6px;
+    }
+    .header-date {
+      font-size: 14px;
+      color: #90cdf4;
+      margin: 0;
+    }
+
+    /* Topic pill strip */
+    .topic-strip {
+      background: #edf2f7;
+      padding: 10px 32px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .topic-pill {
+      display: inline-block;
+      background: #ffffff;
+      border: 1px solid #cbd5e0;
+      border-radius: 20px;
+      padding: 3px 12px;
+      font-size: 12px;
+      color: #4a5568;
+      font-weight: 500;
+    }
+
+    /* Section */
+    .section {
+      padding: 24px 32px 0;
+    }
+    .section-header {
+      display: flex;
+      align-items: center;
+      margin-bottom: 16px;
+      border-bottom: 2px solid currentColor;
+      padding-bottom: 8px;
+    }
+    .section-icon { font-size: 20px; margin-right: 8px; }
+    .section-title {
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin: 0;
+    }
+
+    /* Topic color overrides */
+    .topic-news    .section-title { color: #2b6cb0; }
+    .topic-news    .section-header { border-color: #2b6cb0; }
+    .topic-politics .section-title { color: #9b2c2c; }
+    .topic-politics .section-header { border-color: #9b2c2c; }
+    .topic-business .section-title { color: #276749; }
+    .topic-business .section-header { border-color: #276749; }
+    .topic-marketing .section-title { color: #744210; }
+    .topic-marketing .section-header { border-color: #744210; }
+    .topic-celebrity .section-title { color: #553c9a; }
+    .topic-celebrity .section-header { border-color: #553c9a; }
+
+    /* Article card */
+    .article-card {
+      background: #f7fafc;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+      margin-bottom: 14px;
+      overflow: hidden;
+    }
+    .article-card-inner {
+      padding: 16px;
+    }
+    .article-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .source-badge {
+      font-size: 11px;
+      font-weight: 600;
+      color: #718096;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .paywall-badge {
+      display: inline-block;
+      font-size: 10px;
+      background: #fbd38d;
+      color: #744210;
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-weight: 600;
+    }
+    .open-badge {
+      display: inline-block;
+      font-size: 10px;
+      background: #c6f6d5;
+      color: #276749;
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-weight: 600;
+    }
+    .article-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #1a202c;
+      margin: 0 0 10px;
+      line-height: 1.4;
+    }
+    .article-image {
+      width: 100%;
+      max-height: 160px;
+      object-fit: cover;
+      border-radius: 6px;
+      margin-bottom: 10px;
+    }
+    .bullets {
+      list-style: none;
+      margin: 0 0 12px;
+      padding: 0;
+    }
+    .bullets li {
+      font-size: 14px;
+      line-height: 1.6;
+      color: #4a5568;
+      padding: 3px 0 3px 16px;
+      position: relative;
+    }
+    .bullets li::before {
+      content: "•";
+      position: absolute;
+      left: 0;
+      color: #a0aec0;
+    }
+    .read-link {
+      display: inline-block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #3182ce;
+      text-decoration: none;
+    }
+    .read-link:hover { text-decoration: underline; }
+
+    /* Divider */
+    .section-divider {
+      border: none;
+      border-top: 1px solid #edf2f7;
+      margin: 16px 0 0;
+    }
+
+    /* Footer */
+    .footer {
+      background: #1a1a2e;
+      padding: 28px 32px;
+      text-align: center;
+    }
+    .footer p {
+      font-size: 12px;
+      color: #718096;
+      margin: 4px 0;
+      line-height: 1.6;
+    }
+    .footer a {
+      color: #90cdf4;
+      text-decoration: none;
+    }
+    .footer a:hover { text-decoration: underline; }
+
+    /* Responsive */
+    @media (max-width: 480px) {
+      .header { padding: 24px 16px 20px; }
+      .section { padding: 16px 16px 0; }
+      .footer { padding: 20px 16px; }
+      .header-title { font-size: 22px; }
+    }
+  </style>
+</head>
+<body>
+<div class="email-wrapper">
+
+  <!-- ===== HEADER ===== -->
+  <div class="header">
+    <p class="header-logo">Your Daily Bulletin</p>
+    <h1 class="header-title">{{ greeting }}, Here's What Matters Today</h1>
+    <p class="header-date">{{ date }}</p>
+  </div>
+
+  <!-- ===== TOPIC STRIP ===== -->
+  {% if topics %}
+  <div class="topic-strip">
+    {% for topic in topics %}
+    <span class="topic-pill">{{ topic_icons[topic] }} {{ topic | title }}</span>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- ===== TOPIC SECTIONS ===== -->
+  {% for topic in topics %}
+  {% if articles[topic] %}
+  <div class="section topic-{{ topic }}">
+    <div class="section-header">
+      <span class="section-icon">{{ topic_icons[topic] }}</span>
+      <h2 class="section-title">{{ topic | title }}</h2>
+    </div>
+
+    {% for article in articles[topic] %}
+    <div class="article-card">
+      <div class="article-card-inner">
+        <!-- Meta row -->
+        <div class="article-meta">
+          <span class="source-badge">{{ article.source_name }}</span>
+          {% if article.is_paywalled %}
+          <span class="paywall-badge">&#128274; Premium</span>
+          {% else %}
+          <span class="open-badge">&#x2713; Free</span>
+          {% endif %}
+        </div>
+
+        <!-- Title -->
+        <p class="article-title">{{ article.title }}</p>
+
+        <!-- Image (optional) -->
+        {% if article.image_url %}
+        <img class="article-image" src="{{ article.image_url }}" alt="{{ article.title }}" />
+        {% endif %}
+
+        <!-- Bullet summaries -->
+        <ul class="bullets">
+          {% for bullet in article.bullets %}
+          <li>{{ bullet | replace('- ', '', 1) }}</li>
+          {% endfor %}
+        </ul>
+
+        <!-- Read link -->
+        <a class="read-link" href="{{ article.url }}" target="_blank" rel="noopener noreferrer">
+          Read Full Story &#8594;
+        </a>
+      </div>
+    </div>
+    {% endfor %}
+
+    <hr class="section-divider" />
+  </div>
+  {% endif %}
+  {% endfor %}
+
+  <!-- ===== FOOTER ===== -->
+  <div class="footer">
+    <p><strong style="color:#e2e8f0;">Your Daily Bulletin</strong></p>
+    <p>
+      <a href="{{ preferences_url }}">Manage Preferences</a> &nbsp;|&nbsp;
+      <a href="{{ credentials_url }}">Update Credentials</a> &nbsp;|&nbsp;
+      <a href="{{ unsubscribe_url }}">Unsubscribe</a>
+    </p>
+    <p style="margin-top:12px;">
+      You're receiving this because you subscribed at <a href="{{ site_url }}">{{ site_url }}</a>.<br/>
+      &copy; {{ year }} Daily Bulletin. All rights reserved.
+    </p>
+  </div>
+
+</div>
+</body>
+</html>

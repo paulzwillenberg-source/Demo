@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Dashboard – Daily Bulletin{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+  <h2>Welcome back{% if user.name %}, {{ user.name }}{% endif %}!</h2>
+  <p class="subtitle">Your bulletin will be delivered every morning by 7&nbsp;am.</p>
+
+  <div class="dashboard-grid">
+
+    <!-- Topics -->
+    <div class="card">
+      <h3>&#127757; Your Topics</h3>
+      <div class="tag-list">
+        {% for topic in user.topics %}
+        <span class="tag">
+          {% if topic == 'news' %}📰{% elif topic == 'politics' %}🏛️{% elif topic == 'business' %}💼{% elif topic == 'marketing' %}📣{% elif topic == 'celebrity' %}⭐{% endif %}
+          {{ topic | title }}
+        </span>
+        {% else %}
+        <span class="muted">No topics selected.</span>
+        {% endfor %}
+      </div>
+      <a class="btn btn-secondary mt" href="{{ url_for('preferences', uid=user.id) }}">Edit Topics</a>
+    </div>
+
+    <!-- Premium sources -->
+    <div class="card">
+      <h3>&#128274; Premium Sources</h3>
+      {% if linked_sources %}
+      <ul class="source-list">
+        {% for slug in linked_sources %}
+        <li>
+          <span class="check">&#10003;</span>
+          {{ all_sources.get(slug, slug) }}
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="muted">No premium credentials linked yet.</p>
+      {% endif %}
+      <a class="btn btn-secondary mt" href="{{ url_for('credentials', uid=user.id) }}">Manage Credentials</a>
+    </div>
+
+  </div>
+
+  <div class="dashboard-actions">
+    <a class="btn btn-outline" href="{{ url_for('preview', uid=user.id) }}" target="_blank">
+      &#128065; Preview Today's Bulletin
+    </a>
+    <a class="btn btn-danger-outline" href="{{ url_for('unsubscribe', uid=user.id) }}">
+      Unsubscribe
+    </a>
+  </div>
+</div>
+{% endblock %}
