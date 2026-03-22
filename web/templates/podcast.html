@@ -1,0 +1,580 @@
+{% extends "base.html" %}
+
+{% block title %}Podcast Summarizer – Daily Bulletin{% endblock %}
+
+{% block content %}
+<style>
+/* ── Podcast page styles ── */
+.pod-hero { text-align: center; margin-bottom: 32px; }
+.pod-hero h1 { font-size: 30px; font-weight: 800; color: #1a202c; margin: 0 0 8px; }
+.pod-hero p  { color: #718096; margin: 0; font-size: 15px; }
+
+/* Tabs */
+.pod-tabs { display: flex; gap: 0; border-bottom: 2px solid #e2e8f0; margin-bottom: 24px; }
+.pod-tab  {
+  padding: 10px 20px; font-size: 14px; font-weight: 600; cursor: pointer;
+  border: none; background: none; color: #718096; border-bottom: 2px solid transparent;
+  margin-bottom: -2px; transition: color .15s, border-color .15s;
+}
+.pod-tab.active { color: #3182ce; border-bottom-color: #3182ce; }
+.pod-tab-panel  { display: none; }
+.pod-tab-panel.active { display: block; }
+
+/* Search / input row */
+.pod-input-row { display: flex; gap: 8px; }
+.pod-input-row input {
+  flex: 1; padding: 10px 14px; border: 1px solid #cbd5e0; border-radius: 6px;
+  font-size: 15px; outline: none;
+}
+.pod-input-row input:focus { border-color: #3182ce; box-shadow: 0 0 0 3px rgba(49,130,206,.15); }
+.pod-btn {
+  padding: 10px 20px; background: #3182ce; color: #fff; border: none; border-radius: 6px;
+  font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.pod-btn:hover { background: #2b6cb0; }
+.pod-btn.secondary {
+  background: #edf2f7; color: #4a5568;
+}
+.pod-btn.secondary:hover { background: #e2e8f0; }
+.pod-btn:disabled { opacity: .5; cursor: default; }
+
+/* Search results grid */
+.pod-results { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-top: 20px; }
+.pod-card {
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px;
+  cursor: pointer; transition: box-shadow .15s, border-color .15s;
+}
+.pod-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,.1); border-color: #3182ce; }
+.pod-card img  { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; margin-bottom: 10px; }
+.pod-card-title { font-weight: 700; font-size: 13px; color: #1a202c; margin: 0 0 4px; }
+.pod-card-author { font-size: 12px; color: #718096; margin: 0; }
+
+/* Episode list */
+.pod-ep-list { margin-top: 20px; display: flex; flex-direction: column; gap: 10px; }
+.pod-ep {
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 16px;
+  cursor: pointer; display: flex; gap: 14px; align-items: flex-start;
+  transition: box-shadow .15s, border-color .15s;
+}
+.pod-ep:hover { box-shadow: 0 2px 8px rgba(0,0,0,.08); border-color: #3182ce; }
+.pod-ep-num  { font-size: 12px; color: #a0aec0; font-weight: 600; min-width: 24px; padding-top: 2px; }
+.pod-ep-info { flex: 1; min-width: 0; }
+.pod-ep-title { font-weight: 600; font-size: 14px; color: #1a202c; margin: 0 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pod-ep-meta  { font-size: 12px; color: #718096; margin: 0; }
+.pod-ep-badge {
+  font-size: 11px; background: #c6f6d5; color: #22543d; padding: 2px 7px;
+  border-radius: 12px; font-weight: 600; white-space: nowrap;
+}
+
+/* Processing panel */
+.pod-processing {
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+  padding: 28px 24px; margin-top: 24px; display: none;
+}
+.pod-processing h3 { margin: 0 0 16px; font-size: 16px; color: #1a202c; }
+.pod-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.pod-step  { display: flex; gap: 10px; align-items: center; font-size: 14px; color: #4a5568; }
+.pod-step .icon { width: 20px; text-align: center; flex-shrink: 0; }
+.pod-step.done   .icon::before { content: '✓'; color: #38a169; font-weight: 700; }
+.pod-step.active .icon::before { content: '⏳'; }
+.pod-step.pending .icon::before { content: '○'; color: #cbd5e0; }
+.pod-spinner {
+  width: 20px; height: 20px; border: 3px solid #e2e8f0; border-top-color: #3182ce;
+  border-radius: 50%; animation: spin .8s linear infinite; display: inline-block;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Summary panel */
+.pod-summary { margin-top: 24px; display: none; }
+.pod-summary-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 20px; flex-wrap: wrap; gap: 12px;
+}
+.pod-summary-header h2 { margin: 0; font-size: 22px; color: #1a202c; }
+.pod-export-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.pod-section {
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+  padding: 20px 22px; margin-bottom: 16px;
+}
+.pod-section h3 {
+  margin: 0 0 14px; font-size: 15px; font-weight: 700; color: #1a202c;
+  display: flex; align-items: center; gap: 8px;
+}
+.pod-section p { margin: 0; color: #4a5568; line-height: 1.7; }
+
+.pod-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+.pod-tag {
+  background: #ebf8ff; color: #2b6cb0; font-size: 13px; font-weight: 600;
+  padding: 4px 12px; border-radius: 20px;
+}
+
+.pod-quotes { display: flex; flex-direction: column; gap: 12px; }
+.pod-quote {
+  border-left: 3px solid #3182ce; padding: 10px 16px;
+  background: #f7fafc; border-radius: 0 6px 6px 0;
+}
+.pod-quote blockquote { margin: 0 0 6px; font-style: italic; color: #2d3748; line-height: 1.6; }
+.pod-quote cite { font-size: 12px; color: #718096; }
+
+.pod-action-list { margin: 0; padding: 0 0 0 20px; display: flex; flex-direction: column; gap: 6px; }
+.pod-action-list li { color: #4a5568; font-size: 14px; }
+
+/* Transcript toggle */
+.pod-transcript-toggle {
+  background: none; border: none; color: #3182ce; font-size: 14px; font-weight: 600;
+  cursor: pointer; padding: 0; margin-top: 8px;
+}
+.pod-transcript-box {
+  margin-top: 12px; background: #f7fafc; border-radius: 6px; padding: 14px 16px;
+  max-height: 300px; overflow-y: auto; font-size: 13px; color: #4a5568;
+  line-height: 1.7; white-space: pre-wrap; display: none;
+}
+
+.pod-error {
+  background: #fff5f5; border: 1px solid #fc8181; color: #742a2a;
+  border-radius: 8px; padding: 14px 18px; margin-top: 20px; display: none;
+}
+
+/* Audio player */
+.pod-audio-player { margin-top: 10px; width: 100%; }
+
+/* Back button */
+.pod-back { margin-top: 8px; }
+</style>
+
+<div class="pod-hero">
+  <h1>🎙️ Podcast Summarizer</h1>
+  <p>Find a podcast, load its transcript, and get an AI-powered summary in seconds.</p>
+</div>
+
+<!-- ── Input Tabs ── -->
+<div class="pod-tabs" id="tabBar">
+  <button class="pod-tab active" data-tab="search">Search by name</button>
+  <button class="pod-tab"        data-tab="feed">RSS feed URL</button>
+  <button class="pod-tab"        data-tab="direct">Direct audio URL</button>
+</div>
+
+<!-- Search by name -->
+<div class="pod-tab-panel active" id="tab-search">
+  <div class="pod-input-row">
+    <input type="text" id="searchInput" placeholder="e.g. Lex Fridman, Hidden Brain, 99% Invisible…" />
+    <button class="pod-btn" id="searchBtn" onclick="searchPodcasts()">Search</button>
+  </div>
+  <div class="pod-results" id="searchResults"></div>
+</div>
+
+<!-- RSS feed -->
+<div class="pod-tab-panel" id="tab-feed">
+  <div class="pod-input-row">
+    <input type="url" id="feedInput" placeholder="https://example.com/podcast/feed.xml" />
+    <button class="pod-btn" id="feedBtn" onclick="loadFeed()">Load Episodes</button>
+  </div>
+</div>
+
+<!-- Direct audio URL -->
+<div class="pod-tab-panel" id="tab-direct">
+  <div class="pod-input-row">
+    <input type="url" id="directInput" placeholder="https://example.com/episode.mp3" />
+    <input type="text" id="directTitle" placeholder="Episode title (optional)" style="max-width:240px" />
+    <button class="pod-btn" onclick="processDirectUrl()">Summarize</button>
+  </div>
+</div>
+
+<!-- Episode list (shared, shown after feed or search selection) -->
+<div id="episodeSection" style="display:none">
+  <div style="display:flex; align-items:center; gap:12px; margin-top:24px">
+    <img id="podcastArt" src="" alt="" style="width:56px;height:56px;border-radius:8px;object-fit:cover;display:none">
+    <div>
+      <div id="podcastTitle" style="font-weight:700;font-size:16px;color:#1a202c"></div>
+      <div id="podcastAuthor" style="font-size:13px;color:#718096"></div>
+    </div>
+    <button class="pod-btn secondary pod-back" onclick="resetToSearch()" style="margin-left:auto">← Back</button>
+  </div>
+  <div class="pod-ep-list" id="episodeList"></div>
+</div>
+
+<!-- Processing panel -->
+<div class="pod-processing" id="processingPanel">
+  <h3 id="processingTitle">Processing episode…</h3>
+  <ul class="pod-steps" id="stepList"></ul>
+</div>
+
+<!-- Error panel -->
+<div class="pod-error" id="errorPanel">
+  <strong>Error:</strong> <span id="errorMsg"></span>
+</div>
+
+<!-- Summary panel -->
+<div class="pod-summary" id="summaryPanel">
+  <div class="pod-summary-header">
+    <div>
+      <h2 id="summaryEpTitle"></h2>
+      <div id="summaryPodTitle" style="font-size:13px;color:#718096;margin-top:2px"></div>
+    </div>
+    <div class="pod-export-btns">
+      <button class="pod-btn secondary" onclick="copyToClipboard()">📋 Copy</button>
+      <button class="pod-btn secondary" onclick="downloadMarkdown()">⬇️ Markdown</button>
+      <button class="pod-btn secondary" onclick="window.print()">🖨️ Print / PDF</button>
+      <button class="pod-btn secondary" onclick="resetAll()">↩ New episode</button>
+    </div>
+  </div>
+
+  <div class="pod-section">
+    <h3>📌 TL;DR</h3>
+    <p id="summaryTldr"></p>
+  </div>
+
+  <div class="pod-section">
+    <h3>🗂️ Key Topics</h3>
+    <div class="pod-tags" id="summaryTopics"></div>
+  </div>
+
+  <div class="pod-section">
+    <h3>💬 Notable Quotes</h3>
+    <div class="pod-quotes" id="summaryQuotes"></div>
+  </div>
+
+  <div class="pod-section">
+    <h3>✅ Action Items &amp; Takeaways</h3>
+    <ul class="pod-action-list" id="summaryActions"></ul>
+  </div>
+
+  <div class="pod-section">
+    <h3>📄 Full Transcript</h3>
+    <button class="pod-transcript-toggle" onclick="toggleTranscript()">Show transcript</button>
+    <div class="pod-transcript-box" id="transcriptBox"></div>
+  </div>
+
+  <!-- Audio player if we have a URL -->
+  <div id="audioPlayerWrap" style="margin-top:16px;display:none">
+    <audio class="pod-audio-player" controls id="audioPlayer"></audio>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let currentJobId   = null;
+let pollTimer      = null;
+let resultData     = null;
+let currentAudioUrl = null;
+
+// ── Tabs ──────────────────────────────────────────────────────────────────
+document.querySelectorAll('.pod-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.pod-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.pod-tab-panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+  });
+});
+
+// Allow Enter key in search/feed inputs
+document.getElementById('searchInput').addEventListener('keydown', e => { if (e.key === 'Enter') searchPodcasts(); });
+document.getElementById('feedInput').addEventListener('keydown',   e => { if (e.key === 'Enter') loadFeed(); });
+
+// ── Search ────────────────────────────────────────────────────────────────
+async function searchPodcasts() {
+  const q = document.getElementById('searchInput').value.trim();
+  if (!q) return;
+  const btn = document.getElementById('searchBtn');
+  btn.disabled = true; btn.textContent = 'Searching…';
+  document.getElementById('searchResults').innerHTML = '<p style="color:#718096;font-size:14px">Searching iTunes…</p>';
+
+  try {
+    const res = await fetch('/podcast/search', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({query: q}),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    renderSearchResults(data.results);
+  } catch (err) {
+    showError(err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Search';
+  }
+}
+
+function renderSearchResults(results) {
+  const el = document.getElementById('searchResults');
+  if (!results.length) { el.innerHTML = '<p style="color:#718096;font-size:14px">No podcasts found.</p>'; return; }
+  el.innerHTML = results.map(p => `
+    <div class="pod-card" onclick="selectPodcast('${esc(p.feed_url)}', '${esc(p.title)}', '${esc(p.author)}', '${esc(p.artwork)}')">
+      ${p.artwork ? `<img src="${esc(p.artwork)}" alt="${esc(p.title)}" loading="lazy">` : ''}
+      <p class="pod-card-title">${esc(p.title)}</p>
+      <p class="pod-card-author">${esc(p.author)}</p>
+    </div>
+  `).join('');
+}
+
+async function selectPodcast(feedUrl, title, author, artwork) {
+  showEpisodeSection(title, author, artwork);
+  document.getElementById('episodeList').innerHTML = '<p style="color:#718096;font-size:14px">Loading episodes…</p>';
+  try {
+    const res = await fetch('/podcast/feed', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({feed_url: feedUrl}),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    renderEpisodes(data.episodes, data.podcast);
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+// ── Feed URL ──────────────────────────────────────────────────────────────
+async function loadFeed() {
+  const url = document.getElementById('feedInput').value.trim();
+  if (!url) return;
+  const btn = document.getElementById('feedBtn');
+  btn.disabled = true; btn.textContent = 'Loading…';
+  try {
+    const res = await fetch('/podcast/feed', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({feed_url: url}),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    const p = data.podcast;
+    showEpisodeSection(p.title, p.author, p.image);
+    renderEpisodes(data.episodes, p);
+  } catch (err) {
+    showError(err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Load Episodes';
+  }
+}
+
+// ── Direct URL ────────────────────────────────────────────────────────────
+function processDirectUrl() {
+  const url   = document.getElementById('directInput').value.trim();
+  const title = document.getElementById('directTitle').value.trim() || 'Direct Episode';
+  if (!url) return;
+  startJob(url, null, title, 'Direct Audio');
+}
+
+// ── Render episodes ───────────────────────────────────────────────────────
+function renderEpisodes(episodes, podcast) {
+  const el = document.getElementById('episodeList');
+  if (!episodes.length) { el.innerHTML = '<p style="color:#718096;font-size:14px">No episodes found in feed.</p>'; return; }
+  el.innerHTML = episodes.map((ep, i) => `
+    <div class="pod-ep" onclick="startJob('${esc(ep.audio_url||'')}', '${esc(ep.transcript_url||'')}', '${esc(ep.title)}', '${esc(podcast.title)}', '${esc(ep.audio_url||'')}')">
+      <span class="pod-ep-num">${i + 1}</span>
+      <div class="pod-ep-info">
+        <p class="pod-ep-title">${esc(ep.title)}</p>
+        <p class="pod-ep-meta">${esc(ep.published || '')}${ep.duration ? ' · ' + esc(ep.duration) : ''}</p>
+      </div>
+      ${ep.transcript_url ? '<span class="pod-ep-badge">Transcript</span>' : ''}
+    </div>
+  `).join('');
+}
+
+// ── Job processing ────────────────────────────────────────────────────────
+async function startJob(audioUrl, transcriptUrl, episodeTitle, podcastTitle, mediaUrl) {
+  hideAll();
+  currentAudioUrl = mediaUrl || audioUrl;
+
+  const panel = document.getElementById('processingPanel');
+  panel.style.display = 'block';
+  document.getElementById('processingTitle').textContent = `Processing: ${episodeTitle}`;
+  document.getElementById('stepList').innerHTML = '';
+
+  try {
+    const res = await fetch('/podcast/process', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        audio_url: audioUrl,
+        transcript_url: transcriptUrl,
+        episode_title: episodeTitle,
+        podcast_title: podcastTitle,
+      }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    currentJobId = data.job_id;
+    pollTimer = setInterval(pollJob, 1500);
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+async function pollJob() {
+  if (!currentJobId) return;
+  try {
+    const res  = await fetch(`/podcast/job/${currentJobId}`);
+    const data = await res.json();
+
+    renderSteps(data.steps || []);
+
+    if (data.status === 'done') {
+      clearInterval(pollTimer);
+      document.getElementById('processingPanel').style.display = 'none';
+      showSummary(data.result);
+    } else if (data.status === 'error') {
+      clearInterval(pollTimer);
+      document.getElementById('processingPanel').style.display = 'none';
+      showError(data.error || 'Unknown error');
+    }
+  } catch (_) {}
+}
+
+function renderSteps(steps) {
+  const el = document.getElementById('stepList');
+  el.innerHTML = steps.map((s, i) => {
+    const isLast = i === steps.length - 1;
+    const cls = isLast ? 'active' : 'done';
+    return `<li class="pod-step ${cls}"><span class="icon"></span>${esc(s)}</li>`;
+  }).join('');
+  if (steps.length) {
+    el.innerHTML += `<li class="pod-step active"><span class="icon"><span class="pod-spinner"></span></span>Working…</li>`;
+  }
+}
+
+// ── Render summary ────────────────────────────────────────────────────────
+function showSummary(result) {
+  resultData = result;
+  const s = result.summary;
+
+  document.getElementById('summaryEpTitle').textContent  = result.episode_title;
+  document.getElementById('summaryPodTitle').textContent = result.podcast_title;
+  document.getElementById('summaryTldr').textContent     = s.tldr || '';
+  document.getElementById('transcriptBox').textContent   = result.transcript || '';
+
+  // Topics
+  const topicsEl = document.getElementById('summaryTopics');
+  topicsEl.innerHTML = (s.key_topics || []).map(t => `<span class="pod-tag">${esc(t)}</span>`).join('');
+
+  // Quotes
+  const quotesEl = document.getElementById('summaryQuotes');
+  quotesEl.innerHTML = (s.notable_quotes || []).map(q => `
+    <div class="pod-quote">
+      <blockquote>"${esc(q.quote)}"</blockquote>
+      ${q.context ? `<cite>${esc(q.context)}</cite>` : ''}
+    </div>
+  `).join('');
+
+  // Actions
+  const actEl = document.getElementById('summaryActions');
+  actEl.innerHTML = (s.action_items || []).map(a => `<li>${esc(a)}</li>`).join('');
+
+  // Audio player
+  if (currentAudioUrl) {
+    document.getElementById('audioPlayer').src = currentAudioUrl;
+    document.getElementById('audioPlayerWrap').style.display = 'block';
+  } else {
+    document.getElementById('audioPlayerWrap').style.display = 'none';
+  }
+
+  document.getElementById('summaryPanel').style.display = 'block';
+}
+
+// ── Export helpers ────────────────────────────────────────────────────────
+function copyToClipboard() {
+  if (!resultData) return;
+  const s = resultData.summary;
+  const text = [
+    `# ${resultData.episode_title}`,
+    `_${resultData.podcast_title}_`,
+    '',
+    '## TL;DR',
+    s.tldr,
+    '',
+    '## Key Topics',
+    (s.key_topics || []).map(t => `- ${t}`).join('\n'),
+    '',
+    '## Notable Quotes',
+    (s.notable_quotes || []).map(q => `> "${q.quote}"\n> — ${q.context || ''}`).join('\n\n'),
+    '',
+    '## Action Items',
+    (s.action_items || []).map(a => `- [ ] ${a}`).join('\n'),
+  ].join('\n');
+  navigator.clipboard.writeText(text).then(() => alert('Copied to clipboard!'));
+}
+
+function downloadMarkdown() {
+  if (!resultData) return;
+  const s = resultData.summary;
+  const md = [
+    `# ${resultData.episode_title}`,
+    `_${resultData.podcast_title}_`,
+    '',
+    '## TL;DR',
+    s.tldr,
+    '',
+    '## Key Topics',
+    (s.key_topics || []).map(t => `- ${t}`).join('\n'),
+    '',
+    '## Notable Quotes',
+    (s.notable_quotes || []).map(q => `> "${q.quote}"\n> \n> *${q.context || ''}*`).join('\n\n'),
+    '',
+    '## Action Items & Takeaways',
+    (s.action_items || []).map(a => `- [ ] ${a}`).join('\n'),
+    '',
+    '## Full Transcript',
+    '',
+    resultData.transcript || '',
+  ].join('\n');
+
+  const slug = resultData.episode_title.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 60);
+  const blob = new Blob([md], {type: 'text/markdown'});
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = `${slug}.md`;
+  a.click();
+}
+
+function toggleTranscript() {
+  const box = document.getElementById('transcriptBox');
+  const btn = document.querySelector('.pod-transcript-toggle');
+  if (box.style.display === 'none' || !box.style.display) {
+    box.style.display = 'block';
+    btn.textContent   = 'Hide transcript';
+  } else {
+    box.style.display = 'none';
+    btn.textContent   = 'Show transcript';
+  }
+}
+
+// ── UI helpers ────────────────────────────────────────────────────────────
+function showEpisodeSection(title, author, artwork) {
+  document.getElementById('episodeSection').style.display = 'block';
+  document.getElementById('podcastTitle').textContent  = title || '';
+  document.getElementById('podcastAuthor').textContent = author || '';
+  const art = document.getElementById('podcastArt');
+  if (artwork) { art.src = artwork; art.style.display = 'block'; }
+  else { art.style.display = 'none'; }
+}
+
+function showError(msg) {
+  const el = document.getElementById('errorPanel');
+  document.getElementById('errorMsg').textContent = msg;
+  el.style.display = 'block';
+}
+
+function hideAll() {
+  document.getElementById('processingPanel').style.display = 'none';
+  document.getElementById('summaryPanel').style.display    = 'none';
+  document.getElementById('errorPanel').style.display      = 'none';
+}
+
+function resetAll() {
+  hideAll();
+  currentJobId = null;
+  currentAudioUrl = null;
+  resultData = null;
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+function resetToSearch() {
+  resetAll();
+  document.getElementById('episodeSection').style.display = 'none';
+}
+
+// Escape HTML to prevent XSS when inserting dynamic values into innerHTML
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+</script>
+{% endblock %}

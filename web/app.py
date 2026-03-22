@@ -14,12 +14,22 @@ Routes:
   GET  /unsubscribe/<uid>– Unsubscribe confirmation
   POST /unsubscribe/<uid>– Process unsubscribe
   GET  /preview/<uid>    – Preview today's bulletin (admin / dev)
+
+Podcast Summarizer Routes:
+  GET  /podcast              – Podcast summarizer tool
+  POST /podcast/search       – Search iTunes for podcasts
+  POST /podcast/feed         – Fetch episodes from RSS feed
+  POST /podcast/process      – Start async transcription + summarization job
+  GET  /podcast/job/<job_id> – Poll job status / result
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import sys
+import threading
+import uuid
 
 # Make project root importable
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -27,6 +37,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from flask import (
     Flask,
     flash,
+    jsonify,
     redirect,
     render_template,
     request,
@@ -237,6 +248,128 @@ def preview(uid: str):
         unsubscribe_url=url_for("unsubscribe", uid=uid, _external=True),
     )
     return html
+
+
+# ─── Podcast Summarizer ───────────────────────────────────────────────────────
+
+# In-memory job store: job_id → {status, steps, result, error}
+_jobs: dict[str, dict] = {}
+_jobs_lock = threading.Lock()
+
+
+@app.route("/podcast")
+def podcast():
+    return render_template("podcast.html")
+
+
+@app.route("/podcast/search", methods=["POST"])
+def podcast_search():
+    from src.podcast.fetcher import search_podcasts
+    query = request.json.get("query", "").strip()
+    if not query:
+        return jsonify({"error": "Query is required"}), 400
+    try:
+        results = search_podcasts(query)
+        return jsonify({"results": results})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/podcast/feed", methods=["POST"])
+def podcast_feed():
+    from src.podcast.fetcher import parse_feed
+    feed_url = request.json.get("feed_url", "").strip()
+    if not feed_url:
+        return jsonify({"error": "feed_url is required"}), 400
+    try:
+        data = parse_feed(feed_url)
+        return jsonify(data)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/podcast/process", methods=["POST"])
+def podcast_process():
+    """Start a background job to transcribe and summarize an episode."""
+    data = request.json or {}
+    audio_url = data.get("audio_url", "").strip()
+    transcript_url = data.get("transcript_url", "").strip() or None
+    episode_title = data.get("episode_title", "Unknown Episode")
+    podcast_title = data.get("podcast_title", "Unknown Podcast")
+
+    if not audio_url and not transcript_url:
+        return jsonify({"error": "audio_url or transcript_url is required"}), 400
+
+    job_id = str(uuid.uuid4())
+    with _jobs_lock:
+        _jobs[job_id] = {"status": "pending", "steps": [], "result": None, "error": None}
+
+    thread = threading.Thread(
+        target=_run_job,
+        args=(job_id, audio_url, transcript_url, episode_title, podcast_title),
+        daemon=True,
+    )
+    thread.start()
+
+    return jsonify({"job_id": job_id})
+
+
+@app.route("/podcast/job/<job_id>")
+def podcast_job_status(job_id: str):
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+    return jsonify(job)
+
+
+def _run_job(
+    job_id: str,
+    audio_url: str,
+    transcript_url: str | None,
+    episode_title: str,
+    podcast_title: str,
+) -> None:
+    """Worker: transcribe then summarize; update job store throughout."""
+
+    def step(msg: str) -> None:
+        with _jobs_lock:
+            _jobs[job_id]["steps"].append(msg)
+            _jobs[job_id]["status"] = "processing"
+
+    try:
+        from src.podcast.transcriber import get_transcript
+        from src.podcast.summarizer import summarize_transcript
+
+        step("Starting transcription...")
+        transcript = get_transcript(
+            audio_url=audio_url,
+            transcript_url=transcript_url,
+            progress=step,
+        )
+        step(f"Transcript ready ({len(transcript):,} characters).")
+
+        summary = summarize_transcript(
+            transcript=transcript,
+            episode_title=episode_title,
+            podcast_title=podcast_title,
+            progress=step,
+        )
+        step("Summary complete.")
+
+        with _jobs_lock:
+            _jobs[job_id]["status"] = "done"
+            _jobs[job_id]["result"] = {
+                "summary": summary,
+                "transcript": transcript,
+                "episode_title": episode_title,
+                "podcast_title": podcast_title,
+            }
+    except Exception as exc:
+        logger.exception("Podcast job %s failed", job_id)
+        with _jobs_lock:
+            _jobs[job_id]["status"] = "error"
+            _jobs[job_id]["error"] = str(exc)
 
 
 if __name__ == "__main__":
