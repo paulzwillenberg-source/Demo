@@ -34,7 +34,13 @@ def search_podcasts(query: str, limit: int = 10) -> list[dict]:
 
 def parse_feed(feed_url: str) -> dict:
     """Parse an RSS feed and return podcast metadata and episode list."""
-    feed = feedparser.parse(feed_url)
+    resp = requests.get(
+        feed_url,
+        headers={"User-Agent": "Mozilla/5.0 (compatible; PodcastSummarizer/1.0; +https://github.com)"},
+        timeout=15,
+    )
+    resp.raise_for_status()
+    feed = feedparser.parse(resp.content)
 
     podcast = {
         "title": feed.feed.get("title", ""),
