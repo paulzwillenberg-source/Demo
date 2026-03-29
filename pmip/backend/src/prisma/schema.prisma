@@ -1,0 +1,68 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Source {
+  id              String     @id @default(uuid())
+  name            String
+  type            SourceType
+  feedUrl         String
+  isAuthenticated Boolean    @default(false)
+  isActive        Boolean    @default(true)
+  category        String     @default("web")
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  stories         Story[]
+}
+
+enum SourceType {
+  WEB
+  NEWSLETTER
+  PODCAST
+}
+
+model Story {
+  id              String    @id @default(uuid())
+  sourceId        String
+  source          Source    @relation(fields: [sourceId], references: [id])
+  headline        String
+  url             String    @unique
+  publishedAt     DateTime
+  fullText        String?
+  summary         Json?
+  clusterId       String?
+  cluster         Cluster?  @relation(fields: [clusterId], references: [id])
+  kalshiContracts Json?
+  isStarred       Boolean   @default(false)
+  isRead          Boolean   @default(false)
+  embedding       Json?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model Cluster {
+  id        String   @id @default(uuid())
+  label     String
+  velocity  Float    @default(0)
+  isHot     Boolean  @default(false)
+  stories   Story[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Briefing {
+  id           String    @id @default(uuid())
+  generatedAt  DateTime  @default(now())
+  windowHours  Int       @default(6)
+  leadHeadline String
+  content      Json
+  sentAt       DateTime?
+  storyCount   Int       @default(0)
+  topicCount   Int       @default(0)
+}
