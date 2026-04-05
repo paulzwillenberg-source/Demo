@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}Vintage Scout Preferences{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h1>Vintage Scout Preferences</h1>
+  <p>Configure your vintage clothing alerts for <strong>{{ user.name or user.email }}</strong>.</p>
+
+  <form method="POST">
+
+    <!-- Keywords -->
+    <div class="form-group">
+      <label for="keywords">Search Keywords <small>(comma-separated, e.g. suede jacket, 70s, fringe)</small></label>
+      <input type="text" id="keywords" name="keywords" class="form-control"
+             value="{{ (prefs.keywords or []) | join(', ') }}"
+             placeholder="suede jacket, 70s, denim, fringe">
+      <small class="help-text">Any keyword must appear in the listing title or description to trigger an alert.</small>
+    </div>
+
+    <!-- Brands -->
+    <div class="form-group">
+      <label for="brands">Brands <small>(comma-separated, optional)</small></label>
+      <input type="text" id="brands" name="brands" class="form-control"
+             value="{{ (prefs.brands or []) | join(', ') }}"
+             placeholder="Levi's, Wrangler, Ralph Lauren">
+      <small class="help-text">Leave blank to match all brands.</small>
+    </div>
+
+    <!-- Price range -->
+    <div class="form-group">
+      <label>Price Range (GBP, optional)</label>
+      <div style="display:flex; gap:12px; align-items:center;">
+        <input type="number" name="price_min" class="form-control" style="width:120px;"
+               placeholder="Min £" step="0.01" min="0"
+               value="{{ prefs.price_min if prefs.price_min is not none else '' }}">
+        <span>—</span>
+        <input type="number" name="price_max" class="form-control" style="width:120px;"
+               placeholder="Max £" step="0.01" min="0"
+               value="{{ prefs.price_max if prefs.price_max is not none else '' }}">
+      </div>
+    </div>
+
+    <!-- Sizes -->
+    <div class="form-group">
+      <label>Sizes <small>(leave all unchecked to match any size)</small></label>
+      <div class="checkbox-grid">
+        {% for size in sizes %}
+        <label class="checkbox-label">
+          <input type="checkbox" name="sizes" value="{{ size }}"
+                 {% if size in (prefs.sizes or []) %}checked{% endif %}>
+          {{ size }}
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Categories -->
+    <div class="form-group">
+      <label>Categories <small>(leave all unchecked to match any category)</small></label>
+      <div class="checkbox-grid">
+        {% for cat in categories %}
+        <label class="checkbox-label">
+          <input type="checkbox" name="categories" value="{{ cat }}"
+                 {% if cat in (prefs.categories or []) %}checked{% endif %}>
+          {{ cat }}
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Alert format -->
+    <div class="form-group">
+      <label>Alert Format</label>
+      {% for value, label in alert_formats %}
+      <label class="radio-label" style="display:block; margin-bottom:6px;">
+        <input type="radio" name="alert_format" value="{{ value }}"
+               {% if (prefs.alert_format or 'email_digest') == value %}checked{% endif %}
+               onchange="toggleWhatsApp()">
+        {{ label }}
+        {% if value == 'email_instant' %}
+          <small> — sent immediately when a match is found</small>
+        {% elif value == 'email_digest' %}
+          <small> — batched daily digest email</small>
+        {% elif value == 'whatsapp_instant' %}
+          <small> — immediate WhatsApp message per match</small>
+        {% elif value == 'whatsapp_digest' %}
+          <small> — daily WhatsApp digest</small>
+        {% endif %}
+      </label>
+      {% endfor %}
+    </div>
+
+    <!-- WhatsApp number (shown when WhatsApp format selected) -->
+    <div class="form-group" id="whatsapp-field"
+         style="display:{% if 'whatsapp' in (prefs.alert_format or '') %}block{% else %}none{% endif %}">
+      <label for="whatsapp_number">WhatsApp Number <small>(E.164 format, e.g. +447700900000)</small></label>
+      <input type="tel" id="whatsapp_number" name="whatsapp_number" class="form-control"
+             value="{{ prefs.whatsapp_number or '' }}"
+             placeholder="+447700900000">
+    </div>
+
+    <!-- Enabled scrapers -->
+    <div class="form-group">
+      <label>Platforms to Search</label>
+      <div class="checkbox-grid">
+        {% for slug in available_scrapers %}
+        <label class="checkbox-label">
+          <input type="checkbox" name="enabled_sites" value="{{ slug }}"
+                 {% if slug in (prefs.enabled_sites or ['beyond_retro', 'thrifted']) %}checked{% endif %}>
+          {{ slug | replace('_', ' ') | title }}
+          {% if slug in ['depop', 'vinted'] %}
+            <small>(Tier 3 — requires Playwright)</small>
+          {% endif %}
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Save Vintage Preferences</button>
+    <a href="{{ url_for('vintage_dashboard', uid=user.id) }}" class="btn">Cancel</a>
+  </form>
+</div>
+
+<script>
+function toggleWhatsApp() {
+  const selected = document.querySelector('input[name="alert_format"]:checked');
+  const field = document.getElementById('whatsapp-field');
+  if (selected && selected.value.includes('whatsapp')) {
+    field.style.display = 'block';
+  } else {
+    field.style.display = 'none';
+  }
+}
+</script>
+{% endblock %}

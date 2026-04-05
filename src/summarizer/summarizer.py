@@ -12,7 +12,7 @@ from typing import Optional
 import anthropic
 
 from config import settings
-from src.aggregator.fetcher import Article
+from src.aggregator.fetcher import Article, Listing
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +67,76 @@ def summarize_article(
     except Exception as exc:
         logger.error("Summarization failed for article '%s': %s", article.title, exc)
         return [f"- {article.title}"]
+
+
+_LISTING_PARSE_PROMPT = """You are a vintage clothing data extractor.
+Given a listing title and description, extract the following fields as JSON.
+Return ONLY a valid JSON object — no markdown, no explanation.
+
+Fields:
+  brand     (string or null)    — clothing brand if mentioned, else null
+  condition (string or null)    — one of: "Mint", "Excellent", "Good", "Fair", or null
+  category  (string or null)    — one of: "Top", "Dress", "Jacket", "Coat", "Trousers",
+                                   "Skirt", "Knitwear", "Shoes", "Accessories", or null
+  style_tags (array of strings) — up to 5 descriptive tags (e.g. ["70s", "suede", "fringe"])
+
+Example output:
+{"brand": "Levi's", "condition": "Excellent", "category": "Jacket", "style_tags": ["denim", "70s", "vintage"]}"""
+
+
+def parse_listing(
+    listing: Listing,
+    client: Optional[anthropic.Anthropic] = None,
+) -> Listing:
+    """
+    Use Claude Haiku to extract structured fields from a listing's raw description.
+
+    Populates: brand, condition, category, style_tags.
+    Falls back to the original Listing unchanged if the API call or JSON parse fails.
+    """
+    if not settings.ANTHROPIC_API_KEY:
+        logger.debug("ANTHROPIC_API_KEY not set; skipping listing enrichment.")
+        return listing
+
+    if client is None:
+        client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+
+    content = listing.raw_description.strip() or listing.title
+    user_prompt = f"Title: {listing.title}\n\nDescription:\n{content[:1500]}"
+
+    try:
+        import json
+        message = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=200,
+            system=_LISTING_PARSE_PROMPT,
+            messages=[{"role": "user", "content": user_prompt}],
+        )
+        raw = message.content[0].text.strip()
+        parsed = json.loads(raw)
+
+        # Apply extracted fields, preserving existing values scrapers already set
+        return Listing(
+            listing_id=listing.listing_id,
+            url=listing.url,
+            title=listing.title,
+            source_slug=listing.source_slug,
+            source_name=listing.source_name,
+            price_gbp=listing.price_gbp,
+            shipping_gbp=listing.shipping_gbp,
+            size=listing.size,
+            brand=listing.brand or parsed.get("brand"),
+            condition=listing.condition or parsed.get("condition"),
+            category=listing.category or parsed.get("category"),
+            location=listing.location,
+            style_tags=listing.style_tags or parsed.get("style_tags", []),
+            image_url=listing.image_url,
+            raw_description=listing.raw_description,
+            scraped_at=listing.scraped_at,
+        )
+    except Exception as exc:
+        logger.warning("parse_listing failed for '%s': %s", listing.title, exc)
+        return listing
 
 
 def summarize_articles(

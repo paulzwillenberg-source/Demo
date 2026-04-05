@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Vintage Scout Dashboard{% endblock %}
+
+{% block content %}
+<h1>Vintage Scout</h1>
+<p>Welcome, <strong>{{ user.name or user.email }}</strong></p>
+
+<!-- Current preferences summary -->
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:start;">
+    <h2 style="margin-top:0;">Your Search Preferences</h2>
+    <a href="{{ url_for('vintage_preferences', uid=user.id) }}" class="btn btn-sm">Edit</a>
+  </div>
+
+  {% if prefs %}
+  <table class="stats-table">
+    <tr>
+      <th>Keywords</th>
+      <td>{{ (prefs.keywords or []) | join(', ') or '— (all)' }}</td>
+    </tr>
+    <tr>
+      <th>Brands</th>
+      <td>{{ (prefs.brands or []) | join(', ') or '— (all)' }}</td>
+    </tr>
+    <tr>
+      <th>Sizes</th>
+      <td>{{ (prefs.sizes or []) | join(', ') or '— (all)' }}</td>
+    </tr>
+    <tr>
+      <th>Categories</th>
+      <td>{{ (prefs.categories or []) | join(', ') or '— (all)' }}</td>
+    </tr>
+    <tr>
+      <th>Price range</th>
+      <td>
+        {% if prefs.price_min or prefs.price_max %}
+          £{{ prefs.price_min or '0' }} — £{{ prefs.price_max or '∞' }}
+        {% else %}
+          — (any)
+        {% endif %}
+      </td>
+    </tr>
+    <tr>
+      <th>Alert format</th>
+      <td>{{ prefs.alert_format | replace('_', ' ') | title }}</td>
+    </tr>
+    {% if prefs.whatsapp_number %}
+    <tr>
+      <th>WhatsApp</th>
+      <td>{{ prefs.whatsapp_number }}</td>
+    </tr>
+    {% endif %}
+    <tr>
+      <th>Platforms</th>
+      <td>{{ (prefs.enabled_sites or []) | join(', ') | replace('_', ' ') | title or '— (none)' }}</td>
+    </tr>
+  </table>
+  {% else %}
+  <p>No vintage preferences set yet. <a href="{{ url_for('vintage_preferences', uid=user.id) }}">Set up your search</a>.</p>
+  {% endif %}
+</div>
+
+<!-- Alert stats -->
+<div class="card">
+  <h2>Alert Statistics</h2>
+  {% if alert_stats.total > 0 %}
+  <table class="stats-table">
+    <tr><th>Total alerts sent</th><td>{{ alert_stats.total }}</td></tr>
+    <tr><th>Successful</th><td>{{ alert_stats.successful }}</td></tr>
+    <tr><th>Failed</th><td>{{ alert_stats.failed }}</td></tr>
+    <tr><th>Success rate</th><td>{{ alert_stats.success_rate }}%</td></tr>
+  </table>
+  {% else %}
+  <p>No alerts sent yet.</p>
+  {% endif %}
+
+  {% if pending_count > 0 %}
+  <p style="margin-top:12px;">
+    <strong>{{ pending_count }}</strong> item{% if pending_count != 1 %}s{% endif %} pending in your next digest.
+    <a href="{{ url_for('vintage_preview', uid=user.id) }}" target="_blank">Preview digest →</a>
+  </p>
+  {% endif %}
+</div>
+
+<!-- Recent alerts -->
+<div class="card">
+  <h2>Recent Alerts</h2>
+  {% if recent_alerts %}
+  <table class="stats-table">
+    <thead>
+      <tr>
+        <th>Sent at</th>
+        <th>Format</th>
+        <th>Listing</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for alert in recent_alerts %}
+      <tr>
+        <td>{{ alert.sent_at[:19] | replace('T', ' ') }}</td>
+        <td>{{ alert.alert_format | replace('_', ' ') | title }}</td>
+        <td>{{ alert.listing_id }}</td>
+        <td>
+          {% if alert.success %}
+            <span style="color:#1a5c2b;">✓ Sent</span>
+          {% else %}
+            <span style="color:#8b1a1a;">✗ Failed</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>No alerts sent yet.</p>
+  {% endif %}
+</div>
+
+<!-- Navigation -->
+<div class="card">
+  <h2>Account</h2>
+  <p>
+    <a href="{{ url_for('dashboard', uid=user.id) }}">Daily Bulletin dashboard</a> ·
+    <a href="{{ url_for('preferences', uid=user.id) }}">Bulletin preferences</a> ·
+    <a href="{{ url_for('unsubscribe', uid=user.id) }}">Unsubscribe</a>
+  </p>
+</div>
+{% endblock %}

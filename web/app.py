@@ -42,6 +42,11 @@ from src.preferences.manager import (
     get_user_by_id,
     init_db,
     update_preferences,
+    get_vintage_preferences,
+    upsert_vintage_preferences,
+    get_recent_vintage_alerts,
+    get_vintage_alert_stats,
+    get_pending_digest_items,
 )
 from src.credentials.manager import (
     delete_credentials,
@@ -234,6 +239,131 @@ def preview(uid: str):
         site_url=request.host_url.rstrip("/"),
         preferences_url=url_for("preferences", uid=uid, _external=True),
         credentials_url=url_for("credentials", uid=uid, _external=True),
+        unsubscribe_url=url_for("unsubscribe", uid=uid, _external=True),
+    )
+    return html
+
+
+# ─── Vintage Scout ────────────────────────────────────────────────────────────
+
+_VINTAGE_SIZES = [
+    "XXS", "XS", "S", "M", "L", "XL", "XXL",
+    "6", "8", "10", "12", "14", "16", "18", "20",
+]
+_VINTAGE_CATEGORIES = [
+    "Top", "Dress", "Jacket", "Coat", "Trousers", "Skirt", "Knitwear",
+    "Shoes", "Accessories",
+]
+_VINTAGE_ALERT_FORMATS = [
+    ("email_digest", "Email Digest"),
+    ("email_instant", "Email Instant"),
+    ("whatsapp_digest", "WhatsApp Digest"),
+    ("whatsapp_instant", "WhatsApp Instant"),
+]
+
+
+@app.route("/vintage/<uid>")
+def vintage_dashboard(uid: str):
+    """Vintage Scout dashboard — match history and alert stats."""
+    user = get_user_by_id(uid)
+    if not user:
+        flash("User not found.", "error")
+        return redirect(url_for("index"))
+
+    from src.scrapers import REGISTRY
+    prefs = get_vintage_preferences(uid)
+    recent_alerts = get_recent_vintage_alerts(uid, limit=20)
+    alert_stats = get_vintage_alert_stats(uid)
+    pending_count = len(get_pending_digest_items(uid))
+
+    return render_template(
+        "vintage_dashboard.html",
+        user=user,
+        prefs=prefs,
+        recent_alerts=recent_alerts,
+        alert_stats=alert_stats,
+        pending_count=pending_count,
+        available_scrapers=list(REGISTRY.keys()),
+    )
+
+
+@app.route("/vintage/preferences/<uid>", methods=["GET", "POST"])
+def vintage_preferences(uid: str):
+    """Edit vintage search preferences."""
+    user = get_user_by_id(uid)
+    if not user:
+        flash("User not found.", "error")
+        return redirect(url_for("index"))
+
+    if request.method == "POST":
+        keywords_raw = request.form.get("keywords", "")
+        brands_raw = request.form.get("brands", "")
+        sizes = request.form.getlist("sizes")
+        categories = request.form.getlist("categories")
+        enabled_sites = request.form.getlist("enabled_sites")
+        alert_format = request.form.get("alert_format", "email_digest")
+        whatsapp_number = request.form.get("whatsapp_number", "").strip() or None
+
+        price_min_raw = request.form.get("price_min", "").strip()
+        price_max_raw = request.form.get("price_max", "").strip()
+        price_min = float(price_min_raw) if price_min_raw else None
+        price_max = float(price_max_raw) if price_max_raw else None
+
+        keywords = [k.strip() for k in keywords_raw.split(",") if k.strip()]
+        brands = [b.strip() for b in brands_raw.split(",") if b.strip()]
+
+        if alert_format in ("whatsapp_instant", "whatsapp_digest") and not whatsapp_number:
+            flash("Please enter your WhatsApp number for WhatsApp alerts.", "error")
+            return redirect(url_for("vintage_preferences", uid=uid))
+
+        upsert_vintage_preferences(
+            user_id=uid,
+            brands=brands,
+            sizes=sizes,
+            price_min=price_min,
+            price_max=price_max,
+            keywords=keywords,
+            categories=categories,
+            enabled_sites=enabled_sites,
+            alert_format=alert_format,
+            whatsapp_number=whatsapp_number,
+        )
+        flash("Vintage preferences saved.", "success")
+        return redirect(url_for("vintage_dashboard", uid=uid))
+
+    from src.scrapers import REGISTRY
+    prefs = get_vintage_preferences(uid) or {}
+    return render_template(
+        "vintage_preferences.html",
+        user=user,
+        prefs=prefs,
+        sizes=_VINTAGE_SIZES,
+        categories=_VINTAGE_CATEGORIES,
+        alert_formats=_VINTAGE_ALERT_FORMATS,
+        available_scrapers=list(REGISTRY.keys()),
+    )
+
+
+@app.route("/vintage/preview/<uid>")
+def vintage_preview(uid: str):
+    """Preview the current digest queue for a user (dev/admin use)."""
+    user = get_user_by_id(uid)
+    if not user:
+        flash("User not found.", "error")
+        return redirect(url_for("index"))
+
+    import json as _json
+    raw_items = get_pending_digest_items(uid)
+    listings = [_json.loads(j) for j in raw_items]
+    prefs = get_vintage_preferences(uid) or {}
+
+    from src.email_builder.template import render_vintage_digest
+    html = render_vintage_digest(
+        listings=listings,
+        total_count=len(listings),
+        search_name="Vintage Search",
+        app_url=url_for("vintage_dashboard", uid=uid, _external=True),
+        manage_url=url_for("vintage_preferences", uid=uid, _external=True),
         unsubscribe_url=url_for("unsubscribe", uid=uid, _external=True),
     )
     return html

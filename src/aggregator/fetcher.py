@@ -3,11 +3,15 @@ News article fetcher.
 
 Pulls articles from RSS feeds and the NewsAPI for each configured topic.
 Returns a list of normalized Article dicts ready for the summarizer.
+
+Also defines the Listing dataclass used by the Vintage Scout pipeline.
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -44,6 +48,74 @@ class Article:
             "is_paywalled": self.is_paywalled,
             "raw_text": self.raw_text,
             "tags": self.tags,
+        }
+
+
+@dataclass
+class Listing:
+    """
+    Normalised vintage clothing listing returned by every scraper module.
+
+    Scrapers populate the required fields plus raw_description; Claude's
+    parse_listing() then fills brand, condition, category, and style_tags.
+    """
+
+    listing_id: str          # sha256(source_slug + url)[:16] — stable dedup key
+    url: str
+    title: str
+    source_slug: str         # machine-readable: "beyond_retro", "depop", etc.
+    source_name: str         # human-readable: "Beyond Retro", "Depop", etc.
+
+    # Structured fields — populated by scraper or Claude enrichment
+    price_gbp: Optional[float] = None
+    shipping_gbp: Optional[float] = None   # None → show "TBC" per wireframes
+    size: Optional[str] = None
+    brand: Optional[str] = None
+    condition: Optional[str] = None        # "Mint" | "Excellent" | "Good" | "Fair"
+    category: Optional[str] = None        # "Jacket" | "Dress" | "Top" | etc.
+    location: Optional[str] = None        # seller location, e.g. "London, UK"
+    style_tags: list[str] = field(default_factory=list)
+    image_url: Optional[str] = None
+
+    # Raw text for Claude extraction (dump full listing description here)
+    raw_description: str = ""
+
+    # UTC ISO timestamp set by scraper
+    scraped_at: str = field(
+        default_factory=lambda: datetime.now(tz=timezone.utc).isoformat()
+    )
+
+    @staticmethod
+    def make_listing_id(source_slug: str, url: str) -> str:
+        """Stable 16-char dedup key derived from source + URL."""
+        return hashlib.sha256(f"{source_slug}:{url}".encode()).hexdigest()[:16]
+
+    @property
+    def total_gbp(self) -> Optional[float]:
+        """Item + shipping total; None when either component is unknown."""
+        if self.price_gbp is not None and self.shipping_gbp is not None:
+            return round(self.price_gbp + self.shipping_gbp, 2)
+        return None
+
+    def to_dict(self) -> dict:
+        return {
+            "listing_id": self.listing_id,
+            "url": self.url,
+            "title": self.title,
+            "source_slug": self.source_slug,
+            "source_name": self.source_name,
+            "price_gbp": self.price_gbp,
+            "shipping_gbp": self.shipping_gbp,
+            "size": self.size,
+            "brand": self.brand,
+            "condition": self.condition,
+            "category": self.category,
+            "location": self.location,
+            "style_tags": self.style_tags,
+            "image_url": self.image_url,
+            "raw_description": self.raw_description,
+            "scraped_at": self.scraped_at,
+            "total_gbp": self.total_gbp,
         }
 
 

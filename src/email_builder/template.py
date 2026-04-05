@@ -60,6 +60,74 @@ def render_bulletin(
     return html
 
 
+def render_vintage_instant(
+    listing: dict,
+    search_name: str = "My Search",
+    manage_url: str = "https://yourdomain.com/vintage/preferences",
+    unsubscribe_url: str = "https://yourdomain.com/unsubscribe",
+) -> str:
+    """Render a single-item instant alert email for a vintage listing."""
+    now = datetime.now(tz=timezone.utc)
+    env = _get_env()
+    template = env.get_template("vintage/instant_alert.html")
+    return template.render(
+        title=listing.get("title", ""),
+        source_name=listing.get("source_name", ""),
+        image_url=listing.get("image_url"),
+        listing_url=listing.get("url", ""),
+        price_gbp=listing.get("price_gbp"),
+        shipping_gbp=listing.get("shipping_gbp"),
+        total_gbp=listing.get("total_gbp"),
+        size=listing.get("size"),
+        condition=listing.get("condition"),
+        location=listing.get("location"),
+        verdict=listing.get("verdict"),
+        verdict_pct=listing.get("verdict_pct"),
+        search_name=search_name,
+        manage_url=manage_url,
+        unsubscribe_url=unsubscribe_url,
+        year=now.year,
+    )
+
+
+def render_vintage_instant_subject(listing: dict) -> str:
+    """Generate a subject line for a single-item instant alert."""
+    title = (listing.get("title") or "Vintage item")[:60]
+    source = listing.get("source_name", "")
+    total = listing.get("total_gbp") or listing.get("price_gbp")
+    price_str = f" — £{total:.2f} total" if total else ""
+    return f"🔍 New match: {title} on {source}{price_str}"
+
+
+def render_vintage_digest(
+    listings: list[dict],
+    total_count: int,
+    search_name: str = "My Search",
+    app_url: str = "https://yourdomain.com",
+    manage_url: str = "https://yourdomain.com/vintage/preferences",
+    unsubscribe_url: str = "https://yourdomain.com/unsubscribe",
+) -> str:
+    """Render a multi-item digest email for vintage listings."""
+    now = datetime.now(tz=timezone.utc)
+    env = _get_env()
+    template = env.get_template("vintage/digest.html")
+    return template.render(
+        listings=listings[:5],
+        total_count=total_count,
+        search_name=search_name,
+        date=now.strftime("%A, %B %-d, %Y"),
+        app_url=app_url,
+        manage_url=manage_url,
+        unsubscribe_url=unsubscribe_url,
+        year=now.year,
+    )
+
+
+def render_vintage_digest_subject(total_count: int, search_name: str) -> str:
+    """Generate a subject line for a digest email."""
+    return f"🛍️ Your Vintage Scout Digest — {total_count} new match{'es' if total_count != 1 else ''} for '{search_name}'"
+
+
 def render_subject(topics: list[str], date: str | None = None) -> str:
     """Generate a compelling email subject line."""
     if date is None:

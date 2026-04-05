@@ -80,3 +80,28 @@ RSS_FEEDS = {
 
 # Articles to fetch per topic
 ARTICLES_PER_TOPIC = 5
+
+# ── Vintage Scout ──────────────────────────────────────────────────────────────
+
+# Twilio WhatsApp Business API
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
+TWILIO_WHATSAPP_FROM = os.getenv("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")
+
+# Redis (dedup cache — optional; SQLite fallback used when absent)
+REDIS_URL = os.getenv("REDIS_URL", "")
+
+# Scraping
+PROXY_URL = os.getenv("PROXY_URL", "")
+SCRAPE_INTERVAL_MINUTES = int(os.getenv("SCRAPE_INTERVAL_MINUTES", "15"))
+SCRAPE_MAX_PAGES = int(os.getenv("SCRAPE_MAX_PAGES", "3"))
+# Comma-separated scraper slugs; Tier 3 (depop, vinted) off by default
+ENABLED_SCRAPERS = [
+    s.strip()
+    for s in os.getenv("ENABLED_SCRAPERS", "beyond_retro,thrifted").split(",")
+    if s.strip()
+]
+
+# Vintage digest schedule
+VINTAGE_DIGEST_HOUR = int(os.getenv("VINTAGE_DIGEST_HOUR", "8"))
+VINTAGE_DIGEST_MINUTE = int(os.getenv("VINTAGE_DIGEST_MINUTE", "0"))

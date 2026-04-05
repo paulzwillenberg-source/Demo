@@ -14,3 +14,9 @@ lxml>=5.0.0
 pytest>=8.0.0
 pytest-mock>=3.12.0
 responses>=0.25.0
+
+# Vintage Scout additions
+twilio>=8.0.0
+redis>=5.0.0
+# playwright>=1.40.0  # Tier 3 scrapers (Depop, Vinted) — install separately:
+#   pip install playwright && playwright install chromium
