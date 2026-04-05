@@ -69,6 +69,7 @@ export default function SourceManager({ onClose }: Props) {
 
   // Scan tab state
   const [gmailStatus, setGmailStatus] = useState<GmailStatus | null>(null);
+  const [showGmailSetup, setShowGmailSetup] = useState(false);
   const [newsletters, setNewsletters] = useState<DiscoveredNewsletter[]>([]);
   const [selectedEmails, setSelectedEmails] = useState<Set<string>>(new Set());
   const [scanDemo, setScanDemo] = useState(false);
@@ -118,8 +119,11 @@ export default function SourceManager({ onClose }: Props) {
   const connectGmailMutation = useMutation({
     mutationFn: () => api.get('/gmail/auth'),
     onSuccess: (res) => {
-      // Redirect the browser to Google's consent screen
       window.location.href = res.data.authUrl;
+    },
+    onError: () => {
+      // Server not configured — show setup instructions
+      setShowGmailSetup(true);
     },
   });
 
@@ -291,34 +295,14 @@ export default function SourceManager({ onClose }: Props) {
           {tab === 'scan' && (
             <div className="p-5 space-y-4">
 
-              {/* Gmail connection status card */}
-              <div className="p-4 rounded border" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg)' }}>
-                <div className="text-[11px] font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--color-text-muted)' }}>
+              {/* Gmail connection card */}
+              <div className="p-4 rounded border space-y-3" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg)' }}>
+                <div className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>
                   Gmail Connection
                 </div>
 
-                {!gmailStatus ? (
-                  <div className="flex items-center gap-2 text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
-                    <Loader2 size={13} className="animate-spin" /> Checking status…
-                  </div>
-                ) : !gmailStatus.configured ? (
-                  <div className="space-y-2">
-                    <div className="flex items-start gap-2">
-                      <AlertCircle size={14} className="shrink-0 mt-0.5" style={{ color: 'var(--color-alert)' }} />
-                      <div className="text-[12px]" style={{ color: 'var(--color-text)' }}>
-                        <strong>Google OAuth not configured.</strong>{' '}
-                        <span style={{ color: 'var(--color-text-muted)' }}>
-                          Add <code className="px-1 py-0.5 rounded text-[11px]" style={{ background: 'var(--color-border)' }}>GMAIL_CLIENT_ID</code> and{' '}
-                          <code className="px-1 py-0.5 rounded text-[11px]" style={{ background: 'var(--color-border)' }}>GMAIL_CLIENT_SECRET</code> to the backend <code className="px-1 py-0.5 rounded text-[11px]" style={{ background: 'var(--color-border)' }}>.env</code>.
-                        </span>
-                      </div>
-                    </div>
-                    <div className="text-[11px] px-3 py-2 rounded" style={{ background: 'rgba(43,58,140,0.05)', color: 'var(--color-text-muted)', borderLeft: '2px solid var(--color-brand)' }}>
-                      Get credentials at <strong>console.cloud.google.com</strong> → APIs &amp; Services → Credentials → Create OAuth 2.0 Client ID. Set the redirect URI to{' '}
-                      <code>http://localhost:3001/api/gmail/callback</code>.
-                    </div>
-                  </div>
-                ) : gmailStatus.connected ? (
+                {gmailStatus?.connected ? (
+                  /* ── Already connected ── */
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <CheckCircle size={15} style={{ color: 'var(--color-market)' }} />
@@ -333,25 +317,49 @@ export default function SourceManager({ onClose }: Props) {
                     </div>
                     <button onClick={() => disconnectGmailMutation.mutate()}
                       disabled={disconnectGmailMutation.isPending}
-                      className="text-[11px] px-2.5 py-1 rounded border transition-colors"
+                      className="text-[11px] px-2.5 py-1 rounded border"
                       style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-muted)' }}>
                       Disconnect
                     </button>
                   </div>
                 ) : (
+                  /* ── Not connected — always show the button ── */
                   <div className="space-y-3">
-                    <div className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
-                      Connect your Gmail account to automatically discover newsletters in your inbox. PMIP only requests read-only access.
-                    </div>
-                    <button onClick={() => connectGmailMutation.mutate()}
+                    <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
+                      Connect your Gmail account so PMIP can discover newsletters already in your inbox. Read-only access only.
+                    </p>
+
+                    <button
+                      onClick={() => connectGmailMutation.mutate()}
                       disabled={connectGmailMutation.isPending}
                       className="flex items-center gap-2 px-3 py-2 rounded text-[12px] font-semibold disabled:opacity-50"
                       style={{ background: 'var(--color-brand)', color: '#fff' }}>
                       {connectGmailMutation.isPending
-                        ? <><Loader2 size={13} className="animate-spin" /> Redirecting…</>
-                        : <><Link size={13} /> Connect Gmail with Google</>
-                      }
+                        ? <><Loader2 size={13} className="animate-spin" /> Redirecting to Google…</>
+                        : <><Link size={13} /> Connect Gmail with Google</>}
                     </button>
+
+                    {/* Show setup steps only after a failed connect attempt */}
+                    {showGmailSetup && (
+                      <div className="rounded border p-3 space-y-2" style={{ borderColor: 'rgba(43,58,140,0.25)', background: 'rgba(43,58,140,0.04)' }}>
+                        <div className="flex items-center gap-1.5 text-[12px] font-semibold" style={{ color: 'var(--color-brand)' }}>
+                          <AlertCircle size={13} /> One-time server setup required
+                        </div>
+                        <ol className="text-[11px] space-y-1 pl-4 list-decimal" style={{ color: 'var(--color-text-muted)' }}>
+                          <li>Go to <strong>console.cloud.google.com</strong> → APIs &amp; Services → Credentials</li>
+                          <li>Create an <strong>OAuth 2.0 Client ID</strong> (Web application)</li>
+                          <li>Add this redirect URI: <code className="px-1 rounded" style={{ background: 'var(--color-border)' }}>http://localhost:3001/api/gmail/callback</code></li>
+                          <li>Enable the <strong>Gmail API</strong> in APIs &amp; Services → Library</li>
+                          <li>Copy the Client ID and Secret into your backend <code className="px-1 rounded" style={{ background: 'var(--color-border)' }}>.env</code>:
+                            <pre className="mt-1 px-2 py-1 rounded text-[10px] leading-relaxed" style={{ background: 'var(--color-border)' }}>
+{`GMAIL_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GMAIL_CLIENT_SECRET=your-secret`}
+                            </pre>
+                          </li>
+                          <li>Restart the backend, then click Connect Gmail again</li>
+                        </ol>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
