@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Plus, Trash2, Globe, Mail, Radio, Loader2, Inbox, Search, CheckSquare, Square, ExternalLink } from 'lucide-react';
+import { X, Plus, Trash2, Globe, Mail, Radio, Loader2, Inbox, Search, ExternalLink } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchSources, api } from '../../lib/api';
 import type { Source } from '../../lib/api';
@@ -305,7 +305,10 @@ export default function SourceManager({ onClose }: Props) {
                             if (next.has(nl.email)) next.delete(nl.email); else next.add(nl.email);
                             setSelectedEmails(next);
                           }}>
-                          {selected ? <CheckSquare size={15} style={{ color: 'var(--color-brand)', shrink: 0 }} /> : <Square size={15} style={{ color: 'var(--color-text-muted)', shrink: 0 }} />}
+                          <span className="shrink-0 w-[15px] h-[15px] rounded flex items-center justify-center border"
+            style={{ borderColor: selected ? 'var(--color-brand)' : 'var(--color-text-muted)', background: selected ? 'var(--color-brand)' : 'transparent' }}>
+            {selected && <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M1.5 4.5L3.5 6.5L7.5 2.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+          </span>
                           <div className="flex-1 min-w-0">
                             <div className="text-[13px] font-medium" style={{ color: 'var(--color-text)' }}>{nl.name}</div>
                             <div className="text-[11px] truncate" style={{ color: 'var(--color-text-muted)' }}>{nl.email} · {nl.messageCount} emails</div>
@@ -388,7 +391,10 @@ export default function SourceManager({ onClose }: Props) {
                             if (next.has(feed.url)) next.delete(feed.url); else next.add(feed.url);
                             setSelectedFeeds(next);
                           }}>
-                          {selected ? <CheckSquare size={15} style={{ color: 'var(--color-brand)' }} /> : <Square size={15} style={{ color: 'var(--color-text-muted)' }} />}
+                          <span className="shrink-0 w-[15px] h-[15px] rounded flex items-center justify-center border"
+            style={{ borderColor: selected ? 'var(--color-brand)' : 'var(--color-text-muted)', background: selected ? 'var(--color-brand)' : 'transparent' }}>
+            {selected && <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M1.5 4.5L3.5 6.5L7.5 2.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+          </span>
                           <div className="flex-1 min-w-0">
                             <div className="text-[13px] font-medium" style={{ color: 'var(--color-text)' }}>{feed.title}</div>
                             <div className="text-[11px] truncate" style={{ color: 'var(--color-text-muted)' }}>{feed.url}</div>
