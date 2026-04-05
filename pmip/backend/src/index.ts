@@ -9,6 +9,8 @@ import clustersRouter from './routes/clusters';
 import briefingsRouter from './routes/briefings';
 import newslettersRouter from './routes/newsletters';
 import kalshiRouter from './routes/kalshi';
+import gmailRouter from './routes/gmail';
+import discoverRouter from './routes/discover';
 
 // Import jobs
 import './jobs/ingestJob';
@@ -61,6 +63,8 @@ app.use('/api/clusters', clustersRouter);
 app.use('/api/briefings', briefingsRouter);
 app.use('/api/newsletters', newslettersRouter);
 app.use('/api/kalshi', kalshiRouter);
+app.use('/api/gmail', gmailRouter);
+app.use('/api/discover', discoverRouter);
 
 // 404 handler
 app.use((_req: Request, res: Response) => {
