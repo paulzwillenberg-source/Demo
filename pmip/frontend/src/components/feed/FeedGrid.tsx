@@ -29,7 +29,7 @@ export default function FeedGrid() {
   const {
     stories, setStories,
     selectedClusterId, selectedSourceId,
-    viewMode, searchQuery,
+    viewMode, searchQuery, sources,
   } = useStore();
 
   const isNewsletterView = viewMode === 'newsletters';
@@ -63,30 +63,28 @@ export default function FeedGrid() {
   let displayed: Story[] = stories;
 
   if (viewMode === 'starred') {
-    displayed = displayed.filter((s) => s.isStarred);
+    displayed = displayed.filter(s => s.isStarred);
   }
 
   if (searchQuery.trim()) {
     const q = searchQuery.toLowerCase();
-    displayed = displayed.filter(
-      (s) =>
-        s.headline.toLowerCase().includes(q) ||
-        s.source.name.toLowerCase().includes(q) ||
-        s.summary?.narrative?.toLowerCase().includes(q)
+    displayed = displayed.filter(s =>
+      s.headline.toLowerCase().includes(q) ||
+      s.source.name.toLowerCase().includes(q) ||
+      s.summary?.narrative?.toLowerCase().includes(q)
     );
   }
+
+  // Resolve selected source name for header
+  const selectedSource = selectedSourceId
+    ? (sources.find(s => s.id === selectedSourceId) || displayed[0]?.source)
+    : null;
 
   const getTitle = () => {
     if (viewMode === 'starred') return 'Starred Stories';
     if (viewMode === 'newsletters') return 'Newsletters';
-    if (selectedSourceId) {
-      const source = stories.find((s) => s.sourceId === selectedSourceId)?.source;
-      return source?.name || 'Source Feed';
-    }
-    if (selectedClusterId) {
-      const story = stories.find((s) => s.clusterId === selectedClusterId);
-      return story?.clusterLabel || 'Topic';
-    }
+    if (selectedSource) return selectedSource.name;
+    if (selectedClusterId) return displayed[0]?.clusterLabel || 'Topic';
     return 'Home Feed';
   };
 
@@ -94,9 +92,7 @@ export default function FeedGrid() {
     return (
       <div className="flex-1 overflow-y-auto p-4">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 max-w-5xl">
-          {Array.from({ length: 12 }).map((_, i) => (
-            <SkeletonCard key={i} />
-          ))}
+          {Array.from({ length: 12 }).map((_, i) => <SkeletonCard key={i} />)}
         </div>
       </div>
     );
@@ -123,19 +119,24 @@ export default function FeedGrid() {
       <div className="p-4 max-w-5xl">
         {/* Feed header */}
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-[13px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
-            {getTitle()}
-          </h2>
-          <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+          <div>
+            <h2 className="text-[13px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+              {getTitle()}
+            </h2>
+            {selectedSource && (
+              <p className="text-[11px] mt-0.5 truncate max-w-xs" style={{ color: 'var(--color-text-muted)' }}>
+                {selectedSource.feedUrl}
+              </p>
+            )}
+          </div>
+          <span className="text-[11px] shrink-0" style={{ color: 'var(--color-text-muted)' }}>
             {displayed.length} {displayed.length === 1 ? 'story' : 'stories'}
           </span>
         </div>
 
         {/* Two-column grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          {displayed.map((story) => (
-            <FeedCard key={story.id} story={story} />
-          ))}
+          {displayed.map(story => <FeedCard key={story.id} story={story} />)}
         </div>
       </div>
     </div>

@@ -1,72 +1,59 @@
 import Parser from 'rss-parser';
-import { getMockStories } from './mockData';
+import { prisma, isDatabaseConfigured } from '../lib/prisma';
 
 const parser = new Parser({ timeout: 10000 });
 
-export interface IngestedStory {
-  sourceId: string;
-  sourceName: string;
-  headline: string;
-  url: string;
-  publishedAt: Date;
-  rawText: string;
-}
-
-// Default RSS sources from PRD appendix
-const DEFAULT_FEEDS: { sourceId: string; name: string; url: string }[] = [
-  { sourceId: 'src-nyt-home', name: 'NYT Homepage', url: 'https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml' },
-  { sourceId: 'src-nyt-tech', name: 'NYT Tech', url: 'https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml' },
-  { sourceId: 'src-nyt-biz', name: 'NYT Business', url: 'https://rss.nytimes.com/services/xml/rss/nyt/Business.xml' },
-  { sourceId: 'src-bloomberg', name: 'Bloomberg', url: 'https://feeds.bloomberg.com/markets/news.rss' },
-  { sourceId: 'src-ft', name: 'Financial Times', url: 'https://www.ft.com/rss/home' },
-  { sourceId: 'src-verge', name: 'The Verge', url: 'https://www.theverge.com/rss/index.xml' },
-  { sourceId: 'src-wired', name: 'Wired', url: 'https://www.wired.com/feed/rss' },
-  { sourceId: 'src-atlantic', name: 'The Atlantic', url: 'https://www.theatlantic.com/feed/all/' },
-  { sourceId: 'src-techmeme', name: 'Techmeme', url: 'https://www.techmeme.com/feed.xml' },
+const DEFAULT_FEEDS = [
+  { name: 'NYT Homepage',     type: 'WEB' as const, category: 'web', feedUrl: 'https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml' },
+  { name: 'NYT Tech',         type: 'WEB' as const, category: 'web', feedUrl: 'https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml' },
+  { name: 'NYT Business',     type: 'WEB' as const, category: 'web', feedUrl: 'https://rss.nytimes.com/services/xml/rss/nyt/Business.xml' },
+  { name: 'Bloomberg',        type: 'WEB' as const, category: 'web', feedUrl: 'https://feeds.bloomberg.com/markets/news.rss' },
+  { name: 'The Verge',        type: 'WEB' as const, category: 'web', feedUrl: 'https://www.theverge.com/rss/index.xml' },
+  { name: 'Wired',            type: 'WEB' as const, category: 'web', feedUrl: 'https://www.wired.com/feed/rss' },
+  { name: 'The Atlantic',     type: 'WEB' as const, category: 'web', feedUrl: 'https://www.theatlantic.com/feed/all/' },
+  { name: 'Techmeme',         type: 'WEB' as const, category: 'web', feedUrl: 'https://www.techmeme.com/feed.xml' },
+  { name: 'Financial Times',  type: 'WEB' as const, category: 'web', feedUrl: 'https://www.ft.com/rss/home' },
 ];
 
-// Track already-seen URLs in memory (in production, would check DB)
-const seenUrls = new Set<string>();
-
-export async function fetchFeed(
-  sourceId: string,
-  name: string,
-  feedUrl: string
-): Promise<IngestedStory[]> {
-  try {
-    const feed = await parser.parseURL(feedUrl);
-    const stories: IngestedStory[] = [];
-
-    for (const item of feed.items.slice(0, 20)) {
-      const url = item.link || item.guid;
-      if (!url || seenUrls.has(url)) continue;
-      seenUrls.add(url);
-
-      stories.push({
-        sourceId,
-        sourceName: name,
-        headline: item.title || 'Untitled',
-        url,
-        publishedAt: item.pubDate ? new Date(item.pubDate) : new Date(),
-        rawText: item.contentSnippet || item.content || item.summary || '',
-      });
-    }
-    return stories;
-  } catch (err: any) {
-    console.warn(`[Ingest] Failed to fetch ${name}: ${err.message}`);
-    return [];
-  }
-}
-
 export async function runIngest(): Promise<void> {
+  if (!isDatabaseConfigured()) {
+    console.log('[Ingest] No database configured — skipping live ingest, using mock data');
+    return;
+  }
+
   console.log('[Ingest] Starting ingest run...');
+
+  // Fetch all active sources from DB
+  const sources = await prisma.source.findMany({ where: { isActive: true, type: 'WEB' } });
   let total = 0;
 
-  for (const feed of DEFAULT_FEEDS) {
-    const stories = await fetchFeed(feed.sourceId, feed.name, feed.url);
-    total += stories.length;
-    // In production: persist to DB, queue for summarization
+  for (const source of sources) {
+    if (!source.feedUrl) continue;
+    try {
+      const feed = await parser.parseURL(source.feedUrl);
+      for (const item of feed.items.slice(0, 20)) {
+        const url = item.link || item.guid;
+        if (!url) continue;
+
+        // Upsert — skip if URL already exists
+        const existing = await prisma.story.findUnique({ where: { url } });
+        if (existing) continue;
+
+        await prisma.story.create({
+          data: {
+            sourceId: source.id,
+            headline: item.title || 'Untitled',
+            url,
+            publishedAt: item.pubDate ? new Date(item.pubDate) : new Date(),
+            fullText: item.content || item.contentSnippet || item.summary || null,
+          },
+        });
+        total++;
+      }
+    } catch (err: any) {
+      console.warn(`[Ingest] Failed to fetch ${source.name}: ${err.message}`);
+    }
   }
 
-  console.log(`[Ingest] Completed. ${total} new stories found.`);
+  console.log(`[Ingest] Completed. ${total} new stories saved.`);
 }

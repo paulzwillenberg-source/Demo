@@ -1,17 +1,22 @@
 import { Router, Request, Response } from 'express';
+import { prisma, isDatabaseConfigured } from '../lib/prisma';
 import { generateBriefing } from '../services/briefing';
 import { getMockBriefing } from '../services/mockData';
 
 const router = Router();
-
-let latestBriefing: any = null;
 let generating = false;
 
 // GET /api/briefings/latest
 router.get('/latest', async (_req: Request, res: Response) => {
-  if (latestBriefing) return res.json(latestBriefing);
-  // Return mock briefing on first load
-  res.json(getMockBriefing());
+  if (!isDatabaseConfigured()) {
+    return res.json(getMockBriefing());
+  }
+
+  const briefing = await prisma.briefing.findFirst({
+    orderBy: { generatedAt: 'desc' },
+  });
+  if (!briefing) return res.json(getMockBriefing());
+  res.json(briefing);
 });
 
 // POST /api/briefings/generate
@@ -23,14 +28,23 @@ router.post('/generate', async (req: Request, res: Response) => {
   try {
     const windowHours = parseInt(req.body?.windowHours || '6');
     const briefing = await generateBriefing(windowHours);
-    latestBriefing = briefing;
+
+    if (isDatabaseConfigured()) {
+      await prisma.briefing.create({
+        data: {
+          leadHeadline: briefing.leadHeadline,
+          windowHours: briefing.windowHours,
+          content: briefing.content as any,
+          storyCount: briefing.storyCount,
+          topicCount: briefing.topicCount,
+        },
+      });
+    }
+
     res.json(briefing);
   } catch (err: any) {
     console.error('[Briefing] generation failed:', err.message);
-    // Fall back to mock
-    const mock = getMockBriefing();
-    latestBriefing = mock;
-    res.json(mock);
+    res.json(getMockBriefing());
   } finally {
     generating = false;
   }

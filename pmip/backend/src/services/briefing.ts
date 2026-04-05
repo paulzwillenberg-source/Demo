@@ -1,3 +1,4 @@
+import { prisma, isDatabaseConfigured } from '../lib/prisma';
 import { getMockStories, getMockBriefing } from './mockData';
 import { generateBriefingContent } from './summarize';
 import { sendBriefingEmail } from './email';
@@ -16,25 +17,45 @@ export interface BriefingResult {
 
 export async function generateBriefing(windowHours: number = 6): Promise<BriefingResult> {
   const cutoff = subHours(new Date(), windowHours);
-  const allStories = getMockStories();
 
-  const recent = allStories.filter(
-    s => new Date(s.publishedAt) >= cutoff && s.summary
-  );
+  // Get recent stories
+  let storyInputs: { headline: string; summary: string; source: string; url: string; clusterLabel: string | null }[] = [];
 
-  if (recent.length === 0 || !config.anthropicApiKey) {
-    // Fall back to mock briefing
+  if (isDatabaseConfigured()) {
+    const stories = await prisma.story.findMany({
+      where: {
+        publishedAt: { gte: cutoff },
+        summary: { not: null },
+      },
+      include: { source: true, cluster: true },
+      orderBy: { publishedAt: 'desc' },
+      take: 100,
+    });
+
+    storyInputs = stories.map(s => ({
+      headline: s.headline,
+      summary: (s.summary as any)?.narrative || '',
+      source: s.source.name,
+      url: s.url,
+      clusterLabel: s.cluster?.label ?? null,
+    }));
+  } else {
+    const mockStories = getMockStories().filter(
+      s => new Date(s.publishedAt) >= cutoff && s.summary
+    );
+    storyInputs = mockStories.map(s => ({
+      headline: s.headline,
+      summary: s.summary?.narrative || '',
+      source: s.source.name,
+      url: s.url,
+      clusterLabel: s.clusterLabel,
+    }));
+  }
+
+  if (storyInputs.length === 0 || !config.anthropicApiKey) {
     const mock = getMockBriefing();
     return { ...mock, windowHours };
   }
-
-  const storyInputs = recent.map(s => ({
-    headline: s.headline,
-    summary: s.summary?.narrative || '',
-    source: s.source.name,
-    url: s.url,
-    clusterLabel: s.clusterLabel,
-  }));
 
   const aiContent = await generateBriefingContent(storyInputs, windowHours);
 
@@ -43,12 +64,11 @@ export async function generateBriefing(windowHours: number = 6): Promise<Briefin
     generatedAt: new Date().toISOString(),
     windowHours,
     leadHeadline: aiContent.leadHeadline || 'Macro Briefing',
-    storyCount: recent.length,
+    storyCount: storyInputs.length,
     topicCount: aiContent.sections?.length || 0,
     content: aiContent,
   };
 
-  // Fire-and-forget email delivery
   if (config.resendApiKey && config.briefingEmail) {
     sendBriefingEmail(result).catch(err =>
       console.error('[Briefing] Email delivery failed:', err.message)
