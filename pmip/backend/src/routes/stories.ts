@@ -9,8 +9,8 @@ const starredIds = new Set<string>();
 const readIds = new Set<string>();
 
 // GET /api/stories
-router.get('/', async (_req: Request, res: Response) => {
-  const { clusterId, starred, source, limit = '50', offset = '0' } = _req.query as Record<string, string>;
+router.get('/', async (req: Request, res: Response) => {
+  const { clusterId, starred, source, limit = '50', offset = '0' } = req.query as Record<string, string>;
   const limitN = parseInt(limit);
   const offsetN = parseInt(offset);
 
@@ -23,10 +23,13 @@ router.get('/', async (_req: Request, res: Response) => {
     return res.json({ stories: stories.slice(offsetN, offsetN + limitN), total: stories.length });
   }
 
-  const where: any = {};
+  const userId = req.user!.id;
+  const where: any = {
+    source: { OR: [{ userId }, { userId: null }] },
+  };
   if (clusterId) where.clusterId = clusterId;
   if (starred === 'true') where.isStarred = true;
-  if (source) where.source = { name: { contains: source, mode: 'insensitive' } };
+  if (source) where.source = { ...where.source, name: { contains: source, mode: 'insensitive' } };
 
   const [stories, total] = await Promise.all([
     prisma.story.findMany({
@@ -57,8 +60,12 @@ router.get('/:id', async (req: Request, res: Response) => {
     return res.json({ ...story, isStarred: starredIds.has(story.id), isRead: readIds.has(story.id) });
   }
 
-  const story = await prisma.story.findUnique({
-    where: { id: req.params.id },
+  const userId = req.user!.id;
+  const story = await prisma.story.findFirst({
+    where: {
+      id: req.params.id,
+      source: { OR: [{ userId }, { userId: null }] },
+    },
     include: { source: true, cluster: true },
   });
   if (!story) return res.status(404).json({ error: 'Story not found' });

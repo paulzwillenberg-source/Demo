@@ -8,12 +8,17 @@ const router = Router();
 let mockSources = getMockSources();
 
 // GET /api/sources
-router.get('/', async (_req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
   if (!isDatabaseConfigured()) {
     return res.json({ sources: mockSources });
   }
+  const userId = req.user!.id;
+  // Return sources owned by this user OR global seeded sources (userId = null)
   const sources = await prisma.source.findMany({
-    where: { isActive: true },
+    where: {
+      isActive: true,
+      OR: [{ userId }, { userId: null }],
+    },
     orderBy: [{ type: 'asc' }, { name: 'asc' }],
   });
   res.json({ sources });
@@ -33,7 +38,7 @@ router.post('/', async (req: Request, res: Response) => {
   }
 
   const source = await prisma.source.create({
-    data: { name, type, feedUrl, category: category || 'web' },
+    data: { name, type, feedUrl, category: category || 'web', userId: req.user!.id },
   });
   res.status(201).json(source);
 });
@@ -48,7 +53,7 @@ router.put('/:id', async (req: Request, res: Response) => {
   }
 
   const source = await prisma.source.update({
-    where: { id: req.params.id },
+    where: { id: req.params.id, userId: req.user!.id },
     data: req.body,
   }).catch(() => null);
   if (!source) return res.status(404).json({ error: 'Source not found' });
@@ -63,7 +68,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
   }
 
   await prisma.source.update({
-    where: { id: req.params.id },
+    where: { id: req.params.id, userId: req.user!.id },
     data: { isActive: false },
   }).catch(() => {});
   res.json({ success: true });

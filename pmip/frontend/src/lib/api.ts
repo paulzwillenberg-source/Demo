@@ -1,14 +1,31 @@
 import axios from 'axios';
 
-const SESSION_TOKEN = import.meta.env.VITE_SESSION_TOKEN || 'dev-token';
-
 export const api = axios.create({
   baseURL: '/api',
-  headers: {
-    'Content-Type': 'application/json',
-    'x-session-token': SESSION_TOKEN,
-  },
+  headers: { 'Content-Type': 'application/json' },
 });
+
+// Called by the store to inject/clear the auth token
+export function setAuthToken(token: string | null) {
+  if (token) {
+    api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+  } else {
+    delete api.defaults.headers.common['Authorization'];
+  }
+}
+
+// 401 interceptor — clears token so the login screen appears
+api.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    if (err.response?.status === 401 && !err.config?.url?.includes('/auth/')) {
+      setAuthToken(null);
+      // Force page reload to show login screen
+      window.location.reload();
+    }
+    return Promise.reject(err);
+  }
+);
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

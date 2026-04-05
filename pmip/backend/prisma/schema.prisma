@@ -8,6 +8,16 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+model User {
+  id        String     @id @default(uuid())
+  email     String     @unique
+  name      String
+  password  String
+  createdAt DateTime   @default(now())
+  sources   Source[]
+  briefings Briefing[]
+}
+
 model Source {
   id              String     @id @default(uuid())
   name            String
@@ -16,6 +26,8 @@ model Source {
   isAuthenticated Boolean    @default(false)
   isActive        Boolean    @default(true)
   category        String     @default("web")
+  userId          String?
+  user            User?      @relation(fields: [userId], references: [id])
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
   stories         Story[]
@@ -65,4 +77,6 @@ model Briefing {
   sentAt       DateTime?
   storyCount   Int       @default(0)
   topicCount   Int       @default(0)
+  userId       String?
+  user         User?     @relation(fields: [userId], references: [id])
 }

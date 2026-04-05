@@ -1,8 +1,21 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Story, Cluster, Briefing, Source } from '../lib/api';
+import { setAuthToken } from '../lib/api';
+
+interface AuthUser {
+  id: string;
+  email: string;
+  name: string;
+}
 
 interface AppState {
+  // Auth
+  user: AuthUser | null;
+  token: string | null;
+  login: (user: AuthUser, token: string) => void;
+  logout: () => void;
+
   // Feed state
   stories: Story[];
   setStories: (stories: Story[]) => void;
@@ -46,6 +59,18 @@ interface AppState {
 export const useStore = create<AppState>()(
   persist(
     (set) => ({
+      // Auth
+      user: null,
+      token: null,
+      login: (user, token) => {
+        setAuthToken(token);
+        set({ user, token });
+      },
+      logout: () => {
+        setAuthToken(null);
+        set({ user: null, token: null, stories: [], briefing: null });
+      },
+
       // Feed
       stories: [],
       setStories: (stories) => set({ stories }),
@@ -103,9 +128,13 @@ export const useStore = create<AppState>()(
       partialize: (state) => ({
         darkMode: state.darkMode,
         sidebarCollapsed: state.sidebarCollapsed,
+        user: state.user,
+        token: state.token,
       }),
       onRehydrateStorage: () => (state) => {
         if (state?.darkMode) document.documentElement.classList.add('dark');
+        // Restore auth token in api client on page reload
+        if (state?.token) setAuthToken(state.token);
       },
     }
   )

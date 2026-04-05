@@ -7,12 +7,14 @@ const router = Router();
 let generating = false;
 
 // GET /api/briefings/latest
-router.get('/latest', async (_req: Request, res: Response) => {
+router.get('/latest', async (req: Request, res: Response) => {
   if (!isDatabaseConfigured()) {
     return res.json(getMockBriefing());
   }
 
+  const userId = req.user!.id;
   const briefing = await prisma.briefing.findFirst({
+    where: { OR: [{ userId }, { userId: null }] },
     orderBy: { generatedAt: 'desc' },
   });
   if (!briefing) return res.json(getMockBriefing());
@@ -37,6 +39,7 @@ router.post('/generate', async (req: Request, res: Response) => {
           content: briefing.content as any,
           storyCount: briefing.storyCount,
           topicCount: briefing.topicCount,
+          userId: req.user?.id ?? null,
         },
       });
     }

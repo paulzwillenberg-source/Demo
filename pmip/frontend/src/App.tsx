@@ -7,6 +7,7 @@ import TopicFilterBar from './components/layout/TopicFilterBar';
 import FeedGrid from './components/feed/FeedGrid';
 import StoryPanel from './components/feed/StoryPanel';
 import BriefingModal from './components/briefing/BriefingModal';
+import AuthPage from './components/auth/AuthPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -18,13 +19,18 @@ const queryClient = new QueryClient({
 });
 
 function AppInner() {
-  const { darkMode, selectedStory } = useStore();
+  const { darkMode, selectedStory, user } = useStore();
 
   // Sync dark mode class on mount
   useEffect(() => {
     if (darkMode) document.documentElement.classList.add('dark');
     else document.documentElement.classList.remove('dark');
   }, [darkMode]);
+
+  // Show auth page when not logged in
+  if (!user) {
+    return <AuthPage />;
+  }
 
   return (
     <div

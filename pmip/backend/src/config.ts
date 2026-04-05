@@ -14,5 +14,6 @@ export const config = {
   gmailClientSecret: process.env.GMAIL_CLIENT_SECRET || '',
   gmailRefreshToken: process.env.GMAIL_REFRESH_TOKEN || '',
   sessionToken: process.env.SESSION_TOKEN || 'dev-token',
+  jwtSecret: process.env.JWT_SECRET || 'pmip-dev-jwt-secret-change-in-production',
   nodeEnv: process.env.NODE_ENV || 'development',
 };

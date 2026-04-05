@@ -1,8 +1,19 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
+import jwt from 'jsonwebtoken';
 import { config } from './config';
 
+// Extend Express Request to carry authenticated user
+declare global {
+  namespace Express {
+    interface Request {
+      user?: { id: string; email: string; name: string };
+    }
+  }
+}
+
 // Import routes
+import authRouter from './routes/auth';
 import storiesRouter from './routes/stories';
 import sourcesRouter from './routes/sources';
 import clustersRouter from './routes/clusters';
@@ -35,20 +46,29 @@ if (config.nodeEnv === 'development') {
   });
 }
 
-// Session auth middleware
-app.use((req: Request, res: Response, next: NextFunction) => {
-  // Skip auth for health check
-  if (req.path === '/health') return next();
+// Public routes — no auth required
+const PUBLIC_PATHS = ['/health', '/api/auth/login', '/api/auth/signup'];
 
-  const token = req.headers['x-session-token'];
-  if (!token || token !== config.sessionToken) {
-    // In development with dev-token, allow through
-    if (config.nodeEnv === 'development' && config.sessionToken === 'dev-token') {
-      return next();
-    }
-    return res.status(401).json({ error: 'Unauthorized: invalid session token' });
+// JWT auth middleware
+app.use((req: Request, res: Response, next: NextFunction) => {
+  if (PUBLIC_PATHS.some(p => req.path === p || req.path.startsWith(p + '/'))) {
+    return next();
   }
-  next();
+
+  const authHeader = req.headers['authorization'];
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+
+  if (!token) {
+    return res.status(401).json({ error: 'Unauthorized: missing token' });
+  }
+
+  try {
+    const payload = jwt.verify(token, config.jwtSecret) as { id: string; email: string; name: string };
+    req.user = payload;
+    next();
+  } catch {
+    return res.status(401).json({ error: 'Unauthorized: invalid token' });
+  }
 });
 
 // Health check
@@ -57,6 +77,7 @@ app.get('/health', (_req: Request, res: Response) => {
 });
 
 // Mount routes
+app.use('/api/auth', authRouter);
 app.use('/api/stories', storiesRouter);
 app.use('/api/sources', sourcesRouter);
 app.use('/api/clusters', clustersRouter);
