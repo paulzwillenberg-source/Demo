@@ -1,20 +1,44 @@
 import { Router, Request, Response } from 'express';
 import { config } from '../config';
+import { prisma, isDatabaseConfigured } from '../lib/prisma';
 
 const router = Router();
 
 const GMAIL_SCOPES = 'https://www.googleapis.com/auth/gmail.readonly';
+// After OAuth callback, redirect user back to the frontend
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 const REDIRECT_URI = `${process.env.APP_URL || 'http://localhost:3001'}/api/gmail/callback`;
 
-// Newsletter detection heuristics
-const NEWSLETTER_HEADERS = ['list-unsubscribe', 'list-id', 'x-mailchimp', 'x-campaign', 'x-mailer'];
-const NEWSLETTER_KEYWORDS = ['unsubscribe', 'newsletter', 'digest', 'weekly', 'daily', 'update', 'edition'];
-
-// GET /api/gmail/auth — returns OAuth URL for frontend to redirect to
-router.get('/auth', (_req: Request, res: Response) => {
-  if (!config.gmailClientId) {
-    return res.status(400).json({ error: 'Gmail OAuth not configured. Add GMAIL_CLIENT_ID to your .env' });
+// ── GET /api/gmail/status ──────────────────────────────────────────────────
+// Returns whether the current user has connected their Gmail account
+router.get('/status', async (req: Request, res: Response) => {
+  if (!isDatabaseConfigured()) {
+    return res.json({ connected: false, configured: false });
   }
+
+  const user = await prisma.user.findUnique({
+    where: { id: req.user!.id },
+    select: { gmailRefreshToken: true, gmailConnectedAt: true },
+  });
+
+  res.json({
+    connected: !!user?.gmailRefreshToken,
+    connectedAt: user?.gmailConnectedAt ?? null,
+    configured: !!config.gmailClientId,
+  });
+});
+
+// ── GET /api/gmail/auth ────────────────────────────────────────────────────
+// Returns a Google OAuth URL for the current user
+router.get('/auth', (req: Request, res: Response) => {
+  if (!config.gmailClientId) {
+    return res.status(400).json({
+      error: 'Gmail OAuth not configured on this server. Add GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET to the backend .env',
+    });
+  }
+
+  // Encode the user's ID in the OAuth state so we can match them on callback
+  const state = Buffer.from(JSON.stringify({ userId: req.user!.id })).toString('base64url');
 
   const params = new URLSearchParams({
     client_id: config.gmailClientId,
@@ -23,15 +47,33 @@ router.get('/auth', (_req: Request, res: Response) => {
     scope: GMAIL_SCOPES,
     access_type: 'offline',
     prompt: 'consent',
+    state,
   });
 
   res.json({ authUrl: `https://accounts.google.com/o/oauth2/v2/auth?${params}` });
 });
 
-// GET /api/gmail/callback — OAuth callback, exchanges code for token
+// ── GET /api/gmail/callback ────────────────────────────────────────────────
+// Google redirects here after consent. No JWT required — the user ID is in state.
+// This route is called without a Bearer token (it's a browser redirect from Google).
 router.get('/callback', async (req: Request, res: Response) => {
-  const { code } = req.query as { code: string };
-  if (!code) return res.status(400).json({ error: 'No code provided' });
+  const { code, state, error } = req.query as Record<string, string>;
+
+  if (error) {
+    return res.redirect(`${FRONTEND_URL}?gmail=error&reason=${encodeURIComponent(error)}`);
+  }
+
+  if (!code || !state) {
+    return res.redirect(`${FRONTEND_URL}?gmail=error&reason=missing_params`);
+  }
+
+  let userId: string;
+  try {
+    const decoded = JSON.parse(Buffer.from(state, 'base64url').toString());
+    userId = decoded.userId;
+  } catch {
+    return res.redirect(`${FRONTEND_URL}?gmail=error&reason=invalid_state`);
+  }
 
   try {
     const resp = await fetch('https://oauth2.googleapis.com/token', {
@@ -48,28 +90,57 @@ router.get('/callback', async (req: Request, res: Response) => {
 
     const tokens = await resp.json() as any;
     if (!tokens.refresh_token) {
-      return res.status(400).json({ error: 'No refresh token returned. Try revoking access at myaccount.google.com/permissions and reconnecting.' });
+      return res.redirect(`${FRONTEND_URL}?gmail=error&reason=no_refresh_token`);
     }
 
-    // Return token to frontend — user adds to .env
-    res.json({
-      refresh_token: tokens.refresh_token,
-      message: 'Copy this refresh token into your .env as GMAIL_REFRESH_TOKEN',
-    });
+    // Save refresh token to this user's record
+    if (isDatabaseConfigured()) {
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          gmailRefreshToken: tokens.refresh_token,
+          gmailConnectedAt: new Date(),
+        },
+      });
+    }
+
+    res.redirect(`${FRONTEND_URL}?gmail=connected`);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('[Gmail OAuth callback]', err.message);
+    res.redirect(`${FRONTEND_URL}?gmail=error&reason=token_exchange_failed`);
   }
 });
 
-// GET /api/gmail/scan — scan inbox and return discovered newsletter senders
-router.get('/scan', async (_req: Request, res: Response) => {
-  if (!config.gmailRefreshToken) {
-    // Return mock discovered newsletters for demo
+// ── DELETE /api/gmail/disconnect ───────────────────────────────────────────
+router.delete('/disconnect', async (req: Request, res: Response) => {
+  if (isDatabaseConfigured()) {
+    await prisma.user.update({
+      where: { id: req.user!.id },
+      data: { gmailRefreshToken: null, gmailConnectedAt: null },
+    });
+  }
+  res.json({ success: true });
+});
+
+// ── GET /api/gmail/scan ────────────────────────────────────────────────────
+router.get('/scan', async (req: Request, res: Response) => {
+  // Check for user's personal refresh token first
+  let refreshToken = config.gmailRefreshToken; // global fallback (legacy)
+
+  if (isDatabaseConfigured()) {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      select: { gmailRefreshToken: true },
+    });
+    if (user?.gmailRefreshToken) refreshToken = user.gmailRefreshToken;
+  }
+
+  if (!refreshToken) {
     return res.json({ newsletters: getMockDiscoveredNewsletters(), demo: true });
   }
 
   try {
-    const token = await getAccessToken();
+    const token = await getAccessToken(refreshToken);
     const newsletters = await scanInboxForNewsletters(token);
     res.json({ newsletters, demo: false });
   } catch (err: any) {
@@ -78,14 +149,16 @@ router.get('/scan', async (_req: Request, res: Response) => {
   }
 });
 
-async function getAccessToken(): Promise<string> {
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+async function getAccessToken(refreshToken: string): Promise<string> {
   const resp = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       client_id: config.gmailClientId,
       client_secret: config.gmailClientSecret,
-      refresh_token: config.gmailRefreshToken,
+      refresh_token: refreshToken,
       grant_type: 'refresh_token',
     }),
   });
@@ -104,7 +177,6 @@ interface DiscoveredNewsletter {
 }
 
 async function scanInboxForNewsletters(token: string): Promise<DiscoveredNewsletter[]> {
-  // Search last 90 days for messages with unsubscribe links
   const query = encodeURIComponent('has:unsubscribe newer_than:90d');
   const listResp = await fetch(
     `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${query}&maxResults=500`,
@@ -113,7 +185,6 @@ async function scanInboxForNewsletters(token: string): Promise<DiscoveredNewslet
   const listData = await listResp.json() as any;
   const messages = listData.messages || [];
 
-  // Sample up to 100 messages to identify senders
   const senderMap = new Map<string, { name: string; email: string; count: number; lastDate: string; hasListId: boolean }>();
   const sample = messages.slice(0, 100);
 
@@ -147,13 +218,10 @@ async function scanInboxForNewsletters(token: string): Promise<DiscoveredNewslet
     } catch {}
   }));
 
-  // Filter and rank
   const results: DiscoveredNewsletter[] = [];
   for (const [email, data] of senderMap.entries()) {
     const confidence: 'high' | 'medium' | 'low' =
-      data.hasListId ? 'high' :
-      data.count >= 3 ? 'medium' : 'low';
-
+      data.hasListId ? 'high' : data.count >= 3 ? 'medium' : 'low';
     results.push({
       sender: `${data.name} <${email}>`,
       name: data.name,
@@ -164,25 +232,23 @@ async function scanInboxForNewsletters(token: string): Promise<DiscoveredNewslet
     });
   }
 
-  return results
-    .filter(r => r.messageCount >= 2)
-    .sort((a, b) => b.messageCount - a.messageCount);
+  return results.filter(r => r.messageCount >= 2).sort((a, b) => b.messageCount - a.messageCount);
 }
 
 function getMockDiscoveredNewsletters(): DiscoveredNewsletter[] {
   return [
-    { sender: 'Paul Krugman <newsletters@paulkrugman.substack.com>', name: 'Paul Krugman', email: 'newsletters@paulkrugman.substack.com', messageCount: 24, lastReceived: 'Sat, 5 Apr 2026', confidence: 'high' },
     { sender: 'Morning Brew <hello@morningbrew.com>', name: 'Morning Brew', email: 'hello@morningbrew.com', messageCount: 90, lastReceived: 'Sat, 5 Apr 2026', confidence: 'high' },
     { sender: 'TLDR Newsletter <hello@tldr.tech>', name: 'TLDR Newsletter', email: 'hello@tldr.tech', messageCount: 85, lastReceived: 'Sat, 5 Apr 2026', confidence: 'high' },
-    { sender: 'Ezra Klein <ezraklein@nytimes.com>', name: 'Ezra Klein', email: 'ezraklein@nytimes.com', messageCount: 18, lastReceived: 'Fri, 4 Apr 2026', confidence: 'high' },
-    { sender: 'The Hustle <hello@thehustle.co>', name: 'The Hustle', email: 'hello@thehustle.co', messageCount: 78, lastReceived: 'Sat, 5 Apr 2026', confidence: 'high' },
-    { sender: 'Pivot <kara@pivot.fm>', name: 'Pivot', email: 'kara@pivot.fm', messageCount: 12, lastReceived: 'Thu, 3 Apr 2026', confidence: 'high' },
-    { sender: '1440 Daily <1440digest@join1440.com>', name: '1440 Daily', email: '1440digest@join1440.com', messageCount: 90, lastReceived: 'Sat, 5 Apr 2026', confidence: 'high' },
-    { sender: 'Semafor <newsletters@semafor.com>', name: 'Semafor', email: 'newsletters@semafor.com', messageCount: 22, lastReceived: 'Sat, 5 Apr 2026', confidence: 'high' },
-    { sender: 'Axios AM <mike@axios.com>', name: 'Axios AM', email: 'mike@axios.com', messageCount: 30, lastReceived: 'Sat, 5 Apr 2026', confidence: 'medium' },
-    { sender: 'Puck <hello@puck.news>', name: 'Puck', email: 'hello@puck.news', messageCount: 15, lastReceived: 'Fri, 4 Apr 2026', confidence: 'medium' },
-    { sender: 'The Information <tips@theinformation.com>', name: 'The Information', email: 'tips@theinformation.com', messageCount: 8, lastReceived: 'Thu, 3 Apr 2026', confidence: 'medium' },
     { sender: 'Politico Playbook <playbook@politico.com>', name: 'Politico Playbook', email: 'playbook@politico.com', messageCount: 45, lastReceived: 'Sat, 5 Apr 2026', confidence: 'high' },
+    { sender: 'Axios AM <mike@axios.com>', name: 'Axios AM', email: 'mike@axios.com', messageCount: 30, lastReceived: 'Sat, 5 Apr 2026', confidence: 'medium' },
+    { sender: 'Semafor <newsletters@semafor.com>', name: 'Semafor', email: 'newsletters@semafor.com', messageCount: 22, lastReceived: 'Sat, 5 Apr 2026', confidence: 'high' },
+    { sender: 'Ezra Klein <ezraklein@nytimes.com>', name: 'Ezra Klein', email: 'ezraklein@nytimes.com', messageCount: 18, lastReceived: 'Fri, 4 Apr 2026', confidence: 'high' },
+    { sender: 'Pivot <kara@pivot.fm>', name: 'Pivot', email: 'kara@pivot.fm', messageCount: 12, lastReceived: 'Thu, 3 Apr 2026', confidence: 'high' },
+    { sender: 'The Information <tips@theinformation.com>', name: 'The Information', email: 'tips@theinformation.com', messageCount: 8, lastReceived: 'Thu, 3 Apr 2026', confidence: 'medium' },
+    { sender: 'Puck <hello@puck.news>', name: 'Puck', email: 'hello@puck.news', messageCount: 15, lastReceived: 'Fri, 4 Apr 2026', confidence: 'medium' },
+    { sender: '1440 Daily <1440digest@join1440.com>', name: '1440 Daily', email: '1440digest@join1440.com', messageCount: 90, lastReceived: 'Sat, 5 Apr 2026', confidence: 'high' },
+    { sender: 'The Hustle <hello@thehustle.co>', name: 'The Hustle', email: 'hello@thehustle.co', messageCount: 78, lastReceived: 'Sat, 5 Apr 2026', confidence: 'high' },
+    { sender: 'Paul Krugman <newsletters@paulkrugman.substack.com>', name: 'Paul Krugman', email: 'newsletters@paulkrugman.substack.com', messageCount: 24, lastReceived: 'Sat, 5 Apr 2026', confidence: 'high' },
   ];
 }
 

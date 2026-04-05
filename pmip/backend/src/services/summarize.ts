@@ -21,17 +21,17 @@ export interface StorySummary {
 const SUMMARY_SYSTEM_PROMPT = `You are an expert news analyst producing structured summaries for a senior executive intelligence briefing.
 
 Given article text, produce a JSON object with exactly these fields:
-- narrative: A 3-5 sentence narrative summary of the story
+- narrative: A concise 1-2 sentence summary — the essential "what happened and why it matters" in plain English
 - keyPoints: An array of 3-5 bullet strings (concise, factual)
 - whyItMatters: One paragraph explaining significance and second-order effects
 - whatToWatch: One sentence forward-looking indicator to watch
 
 Respond with valid JSON only. No markdown fences.`;
 
-const PARTIAL_SYSTEM_PROMPT = `You are an expert news analyst. The article text may be truncated due to a paywall. Produce the best summary possible with what is available, noting limitations.
+const PARTIAL_SYSTEM_PROMPT = `You are an expert news analyst. The article text may be truncated due to a paywall. Produce the best summary possible with what is available.
 
 Produce a JSON object with exactly these fields:
-- narrative: A 3-5 sentence narrative summary (note if truncated)
+- narrative: A concise 1-2 sentence summary — the essential "what happened and why it matters" in plain English
 - keyPoints: An array of 3-5 bullet strings
 - whyItMatters: One paragraph explaining significance
 - whatToWatch: One sentence forward-looking indicator

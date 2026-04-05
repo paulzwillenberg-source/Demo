@@ -9,13 +9,15 @@ datasource db {
 }
 
 model User {
-  id        String     @id @default(uuid())
-  email     String     @unique
-  name      String
-  password  String
-  createdAt DateTime   @default(now())
-  sources   Source[]
-  briefings Briefing[]
+  id                 String     @id @default(uuid())
+  email              String     @unique
+  name               String
+  password           String
+  createdAt          DateTime   @default(now())
+  gmailRefreshToken  String?
+  gmailConnectedAt   DateTime?
+  sources            Source[]
+  briefings          Briefing[]
 }
 
 model Source {

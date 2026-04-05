@@ -47,7 +47,7 @@ if (config.nodeEnv === 'development') {
 }
 
 // Public routes — no auth required
-const PUBLIC_PATHS = ['/health', '/api/auth/login', '/api/auth/signup'];
+const PUBLIC_PATHS = ['/health', '/api/auth/login', '/api/auth/signup', '/api/gmail/callback'];
 
 // JWT auth middleware
 app.use((req: Request, res: Response, next: NextFunction) => {

@@ -61,6 +61,7 @@ export interface Story {
   headline: string;
   url: string;
   publishedAt: string;
+  fullText: string | null;
   summary: StorySummary | null;
   clusterId: string | null;
   clusterLabel: string | null;

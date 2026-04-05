@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { X, Plus, Trash2, Globe, Mail, Radio, Loader2, Inbox, Search, ExternalLink } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { X, Plus, Trash2, Globe, Mail, Radio, Loader2, Inbox, Search, ExternalLink, CheckCircle, AlertCircle, Link } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchSources, api } from '../../lib/api';
 import type { Source } from '../../lib/api';
@@ -24,6 +24,12 @@ interface DiscoveredFeed {
   url: string; title: string;
   type: 'rss' | 'atom' | 'json';
   confidence: 'high' | 'medium';
+}
+
+interface GmailStatus {
+  connected: boolean;
+  configured: boolean;
+  connectedAt: string | null;
 }
 
 function typeIcon(type: string) {
@@ -62,6 +68,7 @@ export default function SourceManager({ onClose }: Props) {
   const [addError, setAddError] = useState('');
 
   // Scan tab state
+  const [gmailStatus, setGmailStatus] = useState<GmailStatus | null>(null);
   const [newsletters, setNewsletters] = useState<DiscoveredNewsletter[]>([]);
   const [selectedEmails, setSelectedEmails] = useState<Set<string>>(new Set());
   const [scanDemo, setScanDemo] = useState(false);
@@ -71,11 +78,28 @@ export default function SourceManager({ onClose }: Props) {
   const [feeds, setFeeds] = useState<DiscoveredFeed[]>([]);
   const [selectedFeeds, setSelectedFeeds] = useState<Set<string>>(new Set());
 
-  const { data, isLoading: sourcesLoading } = useQuery({
+  const { data } = useQuery({
     queryKey: ['sources'],
     queryFn: fetchSources,
   });
   const sources = data?.sources || [];
+
+  // Load Gmail status when Scan tab is opened
+  useEffect(() => {
+    if (tab === 'scan' && !gmailStatus) {
+      api.get('/gmail/status').then(r => setGmailStatus(r.data)).catch(() => {});
+    }
+  }, [tab]);
+
+  // Check URL params for gmail=connected after OAuth redirect
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('gmail') === 'connected') {
+      window.history.replaceState({}, '', window.location.pathname);
+      setTab('scan');
+      api.get('/gmail/status').then(r => setGmailStatus(r.data)).catch(() => {});
+    }
+  }, []);
 
   const addMutation = useMutation({
     mutationFn: (body: any) => api.post('/sources', body),
@@ -91,12 +115,29 @@ export default function SourceManager({ onClose }: Props) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sources'] }),
   });
 
+  const connectGmailMutation = useMutation({
+    mutationFn: () => api.get('/gmail/auth'),
+    onSuccess: (res) => {
+      // Redirect the browser to Google's consent screen
+      window.location.href = res.data.authUrl;
+    },
+  });
+
+  const disconnectGmailMutation = useMutation({
+    mutationFn: () => api.delete('/gmail/disconnect'),
+    onSuccess: () => setGmailStatus(s => s ? { ...s, connected: false, connectedAt: null } : s),
+  });
+
   const scanMutation = useMutation({
     mutationFn: () => api.get('/gmail/scan'),
     onSuccess: (res) => {
       setNewsletters(res.data.newsletters || []);
       setScanDemo(res.data.demo || false);
-      setSelectedEmails(new Set(res.data.newsletters.filter((n: DiscoveredNewsletter) => n.confidence === 'high').map((n: DiscoveredNewsletter) => n.email)));
+      setSelectedEmails(new Set(
+        res.data.newsletters
+          .filter((n: DiscoveredNewsletter) => n.confidence === 'high')
+          .map((n: DiscoveredNewsletter) => n.email)
+      ));
     },
   });
 
@@ -185,7 +226,6 @@ export default function SourceManager({ onClose }: Props) {
           {/* ── ADD TAB ── */}
           {tab === 'add' && (
             <div className="p-5 space-y-5">
-              {/* Add form */}
               <div className="p-4 rounded border space-y-3" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg)' }}>
                 <div className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>New Source</div>
                 <div className="flex gap-1.5">
@@ -208,7 +248,7 @@ export default function SourceManager({ onClose }: Props) {
                   onFocus={e => e.target.style.borderColor = 'var(--color-brand)'}
                   onBlur={e => e.target.style.borderColor = 'var(--color-border)'} />
                 <input type="text"
-                  placeholder={type === 'NEWSLETTER' ? 'Sender email (e.g. washingtondc@semafor.com)' : 'RSS feed URL (e.g. https://example.com/feed)'}
+                  placeholder={type === 'NEWSLETTER' ? 'Sender email (e.g. hello@morningbrew.com)' : 'RSS feed URL (e.g. https://example.com/feed)'}
                   value={feedUrl} onChange={e => { setFeedUrl(e.target.value); setAddError(''); }}
                   onKeyDown={e => e.key === 'Enter' && addMutation.mutate({ name, type, feedUrl, category: type.toLowerCase() })}
                   className="w-full px-3 py-2 text-[13px] rounded border outline-none"
@@ -225,7 +265,6 @@ export default function SourceManager({ onClose }: Props) {
                 </button>
               </div>
 
-              {/* Source list */}
               {(['WEB', 'NEWSLETTER', 'PODCAST'] as const).map(t => {
                 const list = grouped[t];
                 if (!list.length) return null;
@@ -251,32 +290,94 @@ export default function SourceManager({ onClose }: Props) {
           {/* ── SCAN GMAIL TAB ── */}
           {tab === 'scan' && (
             <div className="p-5 space-y-4">
+
+              {/* Gmail connection status card */}
+              <div className="p-4 rounded border" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg)' }}>
+                <div className="text-[11px] font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--color-text-muted)' }}>
+                  Gmail Connection
+                </div>
+
+                {!gmailStatus ? (
+                  <div className="flex items-center gap-2 text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
+                    <Loader2 size={13} className="animate-spin" /> Checking status…
+                  </div>
+                ) : !gmailStatus.configured ? (
+                  <div className="space-y-2">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle size={14} className="shrink-0 mt-0.5" style={{ color: 'var(--color-alert)' }} />
+                      <div className="text-[12px]" style={{ color: 'var(--color-text)' }}>
+                        <strong>Google OAuth not configured.</strong>{' '}
+                        <span style={{ color: 'var(--color-text-muted)' }}>
+                          Add <code className="px-1 py-0.5 rounded text-[11px]" style={{ background: 'var(--color-border)' }}>GMAIL_CLIENT_ID</code> and{' '}
+                          <code className="px-1 py-0.5 rounded text-[11px]" style={{ background: 'var(--color-border)' }}>GMAIL_CLIENT_SECRET</code> to the backend <code className="px-1 py-0.5 rounded text-[11px]" style={{ background: 'var(--color-border)' }}>.env</code>.
+                        </span>
+                      </div>
+                    </div>
+                    <div className="text-[11px] px-3 py-2 rounded" style={{ background: 'rgba(43,58,140,0.05)', color: 'var(--color-text-muted)', borderLeft: '2px solid var(--color-brand)' }}>
+                      Get credentials at <strong>console.cloud.google.com</strong> → APIs &amp; Services → Credentials → Create OAuth 2.0 Client ID. Set the redirect URI to{' '}
+                      <code>http://localhost:3001/api/gmail/callback</code>.
+                    </div>
+                  </div>
+                ) : gmailStatus.connected ? (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle size={15} style={{ color: 'var(--color-market)' }} />
+                      <div>
+                        <div className="text-[13px] font-semibold" style={{ color: 'var(--color-text)' }}>Gmail connected</div>
+                        {gmailStatus.connectedAt && (
+                          <div className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                            Since {new Date(gmailStatus.connectedAt).toLocaleDateString()}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <button onClick={() => disconnectGmailMutation.mutate()}
+                      disabled={disconnectGmailMutation.isPending}
+                      className="text-[11px] px-2.5 py-1 rounded border transition-colors"
+                      style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-muted)' }}>
+                      Disconnect
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
+                      Connect your Gmail account to automatically discover newsletters in your inbox. PMIP only requests read-only access.
+                    </div>
+                    <button onClick={() => connectGmailMutation.mutate()}
+                      disabled={connectGmailMutation.isPending}
+                      className="flex items-center gap-2 px-3 py-2 rounded text-[12px] font-semibold disabled:opacity-50"
+                      style={{ background: 'var(--color-brand)', color: '#fff' }}>
+                      {connectGmailMutation.isPending
+                        ? <><Loader2 size={13} className="animate-spin" /> Redirecting…</>
+                        : <><Link size={13} /> Connect Gmail with Google</>
+                      }
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Scan results */}
               {newsletters.length === 0 ? (
-                <div className="text-center py-8 space-y-4">
-                  <Inbox size={32} className="mx-auto opacity-20" style={{ color: 'var(--color-text)' }} />
-                  <div>
-                    <div className="font-semibold text-[14px] mb-1" style={{ color: 'var(--color-text)' }}>
-                      Scan your Gmail inbox
-                    </div>
-                    <div className="text-[12px] max-w-sm mx-auto space-y-2" style={{ color: 'var(--color-text-muted)' }}>
-                      <p>PMIP will scan the last 90 days of email and identify newsletters you're already subscribed to.</p>
-                      <p className="text-[11px] px-3 py-2 rounded text-left" style={{ background: 'rgba(43,58,140,0.05)', borderLeft: '2px solid var(--color-brand)', color: 'var(--color-brand)' }}>
-                        <strong>Note:</strong> This uses Google OAuth — separate from your PMIP login. Your PMIP email/password is only for signing into this app. To connect Gmail, a server admin must add Google OAuth credentials to the backend.
-                      </p>
-                    </div>
+                <div className="text-center py-6 space-y-3">
+                  <Inbox size={28} className="mx-auto opacity-20" style={{ color: 'var(--color-text)' }} />
+                  <div className="text-[13px] font-semibold" style={{ color: 'var(--color-text)' }}>
+                    {gmailStatus?.connected ? 'Scan your inbox' : 'Connect Gmail to scan your real inbox, or scan in demo mode'}
                   </div>
                   <button onClick={() => scanMutation.mutate()}
                     disabled={scanMutation.isPending}
                     className="inline-flex items-center gap-2 px-4 py-2 rounded text-[13px] font-semibold"
                     style={{ background: 'var(--color-brand)', color: '#fff' }}>
-                    {scanMutation.isPending ? <><Loader2 size={14} className="animate-spin" /> Scanning inbox...</> : <><Inbox size={14} /> Scan Inbox</>}
+                    {scanMutation.isPending
+                      ? <><Loader2 size={14} className="animate-spin" /> Scanning inbox…</>
+                      : <><Inbox size={14} /> {gmailStatus?.connected ? 'Scan My Inbox' : 'Scan Demo Inbox'}</>
+                    }
                   </button>
                 </div>
               ) : (
                 <>
                   {scanDemo && (
                     <div className="text-[11px] px-3 py-2 rounded border" style={{ background: 'rgba(43,58,140,0.05)', borderColor: 'rgba(43,58,140,0.2)', color: 'var(--color-brand)' }}>
-                      Demo mode — showing example newsletters. Add Gmail OAuth credentials to scan your real inbox.
+                      Demo mode — showing example newsletters. Connect Gmail above to scan your real inbox.
                     </div>
                   )}
                   <div className="flex items-center justify-between">
@@ -308,9 +409,9 @@ export default function SourceManager({ onClose }: Props) {
                             setSelectedEmails(next);
                           }}>
                           <span className="shrink-0 w-[15px] h-[15px] rounded flex items-center justify-center border"
-            style={{ borderColor: selected ? 'var(--color-brand)' : 'var(--color-text-muted)', background: selected ? 'var(--color-brand)' : 'transparent' }}>
-            {selected && <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M1.5 4.5L3.5 6.5L7.5 2.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-          </span>
+                            style={{ borderColor: selected ? 'var(--color-brand)' : 'var(--color-text-muted)', background: selected ? 'var(--color-brand)' : 'transparent' }}>
+                            {selected && <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M1.5 4.5L3.5 6.5L7.5 2.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                          </span>
                           <div className="flex-1 min-w-0">
                             <div className="text-[13px] font-medium" style={{ color: 'var(--color-text)' }}>{nl.name}</div>
                             <div className="text-[11px] truncate" style={{ color: 'var(--color-text-muted)' }}>{nl.email} · {nl.messageCount} emails</div>
@@ -325,7 +426,7 @@ export default function SourceManager({ onClose }: Props) {
                     disabled={importNewslettersMutation.isPending || selectedEmails.size === 0}
                     className="w-full py-2.5 rounded text-[13px] font-semibold disabled:opacity-50"
                     style={{ background: 'var(--color-brand)', color: '#fff' }}>
-                    {importNewslettersMutation.isPending ? 'Importing...' : `Import ${selectedEmails.size} Newsletter${selectedEmails.size !== 1 ? 's' : ''}`}
+                    {importNewslettersMutation.isPending ? 'Importing…' : `Import ${selectedEmails.size} Newsletter${selectedEmails.size !== 1 ? 's' : ''}`}
                   </button>
                 </>
               )}
@@ -394,9 +495,9 @@ export default function SourceManager({ onClose }: Props) {
                             setSelectedFeeds(next);
                           }}>
                           <span className="shrink-0 w-[15px] h-[15px] rounded flex items-center justify-center border"
-            style={{ borderColor: selected ? 'var(--color-brand)' : 'var(--color-text-muted)', background: selected ? 'var(--color-brand)' : 'transparent' }}>
-            {selected && <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M1.5 4.5L3.5 6.5L7.5 2.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-          </span>
+                            style={{ borderColor: selected ? 'var(--color-brand)' : 'var(--color-text-muted)', background: selected ? 'var(--color-brand)' : 'transparent' }}>
+                            {selected && <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M1.5 4.5L3.5 6.5L7.5 2.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                          </span>
                           <div className="flex-1 min-w-0">
                             <div className="text-[13px] font-medium" style={{ color: 'var(--color-text)' }}>{feed.title}</div>
                             <div className="text-[11px] truncate" style={{ color: 'var(--color-text-muted)' }}>{feed.url}</div>
@@ -421,7 +522,7 @@ export default function SourceManager({ onClose }: Props) {
                     disabled={importFeedsMutation.isPending || selectedFeeds.size === 0}
                     className="w-full py-2.5 rounded text-[13px] font-semibold disabled:opacity-50"
                     style={{ background: 'var(--color-brand)', color: '#fff' }}>
-                    {importFeedsMutation.isPending ? 'Importing...' : `Add ${selectedFeeds.size} Feed${selectedFeeds.size !== 1 ? 's' : ''}`}
+                    {importFeedsMutation.isPending ? 'Importing…' : `Add ${selectedFeeds.size} Feed${selectedFeeds.size !== 1 ? 's' : ''}`}
                   </button>
                 </>
               )}
@@ -459,7 +560,7 @@ function SourceRow({ source, onDelete, deleting }: { source: Source; onDelete: (
           <button onClick={() => { onDelete(); setConfirming(false); }} disabled={deleting}
             className="text-[11px] px-2 py-1 rounded font-semibold"
             style={{ background: 'var(--color-alert)', color: '#fff' }}>
-            {deleting ? '...' : 'Remove'}
+            {deleting ? '…' : 'Remove'}
           </button>
           <button onClick={() => setConfirming(false)} className="text-[11px] px-2 py-1 rounded"
             style={{ color: 'var(--color-text-muted)' }}>Cancel</button>
