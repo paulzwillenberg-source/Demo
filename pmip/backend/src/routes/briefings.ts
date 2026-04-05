@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { prisma, isDatabaseConfigured } from '../lib/prisma';
 import { generateBriefing } from '../services/briefing';
 import { getMockBriefing } from '../services/mockData';
+import { summarizeStory } from '../services/summarize';
 
 const router = Router();
 let generating = false;
@@ -50,6 +51,34 @@ router.post('/generate', async (req: Request, res: Response) => {
     res.json(getMockBriefing());
   } finally {
     generating = false;
+  }
+});
+
+// POST /api/briefings/summarize-backfill
+// Summarizes up to `limit` stories that have no summary yet
+router.post('/summarize-backfill', async (req: Request, res: Response) => {
+  if (!isDatabaseConfigured()) return res.json({ done: 0 });
+
+  const limit = parseInt(req.body?.limit || '20');
+  const stories = await prisma.story.findMany({
+    where: { summary: null, fullText: { not: null } },
+    include: { source: true },
+    orderBy: { publishedAt: 'desc' },
+    take: limit,
+  });
+
+  // Fire and forget — respond immediately
+  res.json({ queued: stories.length });
+
+  for (const story of stories) {
+    try {
+      const text = story.fullText || story.headline;
+      const summary = await summarizeStory(text, story.headline, story.source.isAuthenticated);
+      await prisma.story.update({ where: { id: story.id }, data: { summary: summary as any } });
+      console.log(`[Backfill] ✓ ${story.headline.slice(0, 60)}`);
+    } catch (err: any) {
+      console.warn(`[Backfill] ✗ ${story.headline.slice(0, 40)}: ${err.message}`);
+    }
   }
 });
 

@@ -1,7 +1,8 @@
-import { Search, RefreshCw, Star, Moon, Sun, PanelLeft, Newspaper, LogOut, ChevronDown } from 'lucide-react';
+import { Search, RefreshCw, Star, Moon, Sun, PanelLeft, Newspaper, LogOut, ChevronDown, Sparkles } from 'lucide-react';
 import { useStore } from '../../stores/useStore';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState, useRef, useEffect } from 'react';
+import { api } from '../../lib/api';
 
 export default function TopBar() {
   const {
@@ -15,6 +16,7 @@ export default function TopBar() {
 
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
+  const [summarizing, setSummarizing] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
@@ -33,6 +35,20 @@ export default function TopBar() {
     setRefreshing(true);
     await queryClient.invalidateQueries();
     setTimeout(() => setRefreshing(false), 800);
+  };
+
+  const handleSummarize = async () => {
+    setSummarizing(true);
+    try {
+      await api.post('/briefings/summarize-backfill', { limit: 30 });
+      // Refresh feed after ~15s to pick up new summaries
+      setTimeout(async () => {
+        await queryClient.invalidateQueries({ queryKey: ['stories'] });
+        setSummarizing(false);
+      }, 15000);
+    } catch {
+      setSummarizing(false);
+    }
   };
 
   return (
@@ -109,6 +125,17 @@ export default function TopBar() {
           title="Starred stories"
         >
           <Star size={16} fill={viewMode === 'starred' ? 'currentColor' : 'none'} />
+        </button>
+
+        {/* Summarize unsummarized stories */}
+        <button
+          onClick={handleSummarize}
+          disabled={summarizing}
+          className="p-1.5 rounded hover:bg-black/5 dark:hover:bg-white/5 transition-colors disabled:opacity-50"
+          style={{ color: summarizing ? 'var(--color-brand)' : 'var(--color-text-muted)' }}
+          title={summarizing ? 'Summarizing stories… (refreshes in ~15s)' : 'Summarize stories with AI'}
+        >
+          <Sparkles size={16} className={summarizing ? 'animate-pulse' : ''} />
         </button>
 
         {/* Refresh */}

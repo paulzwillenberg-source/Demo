@@ -258,9 +258,11 @@ export default function SourceManager({ onClose }: Props) {
                     <div className="font-semibold text-[14px] mb-1" style={{ color: 'var(--color-text)' }}>
                       Scan your Gmail inbox
                     </div>
-                    <div className="text-[12px] max-w-sm mx-auto" style={{ color: 'var(--color-text-muted)' }}>
-                      PMIP will look through the last 90 days of email and identify newsletters you're already subscribed to.
-                      {!process.env.VITE_GMAIL_CONFIGURED && ' (Demo mode — configure Gmail OAuth to scan your real inbox)'}
+                    <div className="text-[12px] max-w-sm mx-auto space-y-2" style={{ color: 'var(--color-text-muted)' }}>
+                      <p>PMIP will scan the last 90 days of email and identify newsletters you're already subscribed to.</p>
+                      <p className="text-[11px] px-3 py-2 rounded text-left" style={{ background: 'rgba(43,58,140,0.05)', borderLeft: '2px solid var(--color-brand)', color: 'var(--color-brand)' }}>
+                        <strong>Note:</strong> This uses Google OAuth — separate from your PMIP login. Your PMIP email/password is only for signing into this app. To connect Gmail, a server admin must add Google OAuth credentials to the backend.
+                      </p>
                     </div>
                   </div>
                   <button onClick={() => scanMutation.mutate()}
