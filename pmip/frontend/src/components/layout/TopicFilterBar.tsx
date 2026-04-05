@@ -37,7 +37,7 @@ export default function TopicFilterBar() {
         }`}
         style={
           selectedClusterId === null
-            ? { ringColor: 'var(--color-brand)', outline: `1px solid var(--color-brand)` }
+            ? { outline: `1px solid var(--color-brand)` }
             : {}
         }
       >

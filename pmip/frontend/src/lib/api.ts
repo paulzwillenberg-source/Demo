@@ -51,6 +51,7 @@ export interface Source {
   name: string;
   type: 'WEB' | 'NEWSLETTER' | 'PODCAST';
   category: string;
+  feedUrl: string;
   isAuthenticated: boolean;
 }
 

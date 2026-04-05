@@ -235,7 +235,7 @@ export default function BriefingModal() {
                   <ul className="space-y-2.5">
                     {section.stories?.map((story, j) => (
                       <li key={j} className="flex gap-2 text-[13px]">
-                        <span style={{ color: 'var(--color-brand)', fontWeight: 700, shrink: 0 }}>·</span>
+                        <span style={{ color: 'var(--color-brand)', fontWeight: 700, flexShrink: 0 }}>·</span>
                         <div>
                           <a
                             href={story.url}
