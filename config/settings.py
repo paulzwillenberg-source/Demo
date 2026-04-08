@@ -80,3 +80,15 @@ RSS_FEEDS = {
 
 # Articles to fetch per topic
 ARTICLES_PER_TOPIC = 5
+
+# Podcast Watcher
+# Comma-separated list of RSS feed URLs to monitor for new episodes
+PODCAST_FEEDS: list[str] = [
+    f.strip()
+    for f in os.getenv("PODCAST_FEEDS", "").split(",")
+    if f.strip()
+]
+# Email address to send podcast digests to
+PODCAST_EMAIL = os.getenv("PODCAST_EMAIL", "")
+# Path to JSON file that tracks already-processed episode IDs
+PODCAST_SEEN_DB = os.getenv("PODCAST_SEEN_DB", "podcast_seen.json")
